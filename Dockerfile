@@ -45,4 +45,4 @@ EXPOSE 3000 3001 3100
 
 # Run both services under supervisord; wrap with tini as PID 1
 ENTRYPOINT ["/usr/bin/tini","--"]
-CMD ["/usr/bin/supervisord","-c","/etc/supervi]()
+CMD ["/usr/bin/supervisord","-c","/etc/supervisor/conf.d/supervisord.conf"]
