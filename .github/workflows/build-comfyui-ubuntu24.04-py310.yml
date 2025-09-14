@@ -1,48 +1,48 @@
 name: build-comfyui-ubuntu24.04-py310
 
 on:
-  push:
-    branches:
-      - feat/ubuntu24.04-py310-cu128
   workflow_dispatch:
+  push:
+    branches: [ feat/ubuntu24.04-py310-cu128 ]
+    paths:
+      - "images/comfyui-ubuntu24.04-py310/**"
+      - ".github/workflows/build-comfyui-ubuntu24.04-py310.yml"
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
+    env:
+      BUILDKIT_PROGRESS: plain
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      # Show exactly what files are present before building
+      - name: Preflight (paths & contents)
+        run: |
+          echo "GITHUB_REF: $GITHUB_REF"
+          echo "HEAD: $(git rev-parse --short HEAD)"
+          echo "--- repo root ---"; ls -la
+          echo "--- images/ ---"; ls -la images || true
+          echo "--- images/comfyui-ubuntu24.04-py310/ ---"; ls -la images/comfyui-ubuntu24.04-py310 || true
+
+          if [ ! -f images/comfyui-ubuntu24.04-py310/Dockerfile ]; then
+            echo "::error::Dockerfile not found at images/comfyui-ubuntu24.04-py310/Dockerfile"; exit 1; fi
+          if [ ! -f images/comfyui-ubuntu24.04-py310/run-comfy.sh ]; then
+            echo "::error::run-comfy.sh not found at images/comfyui-ubuntu24.04-py310/run-comfy.sh"; exit 1; fi
+
+          echo "✓ Found Dockerfile and run-comfy.sh"
+          echo "---- Dockerfile head ----"
+          sed -n '1,60p' images/comfyui-ubuntu24.04-py310/Dockerfile
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}/comfyui-ubuntu24.04-py310
-
-      - name: Build and push
+      - name: Build (no push)
         uses: docker/build-push-action@v6
         with:
-          context: images/comfyui-ubuntu24.04-py310
-          file: Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/comfyui-ubuntu24.04-py310:latest
-          cache-to: type=inline
+          context: .
+          file: images/comfyui-ubuntu24.04-py310/Dockerfile
+          platforms: linux/amd64
+          push: false
+          pull: true
