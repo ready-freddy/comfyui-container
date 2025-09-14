@@ -1,5 +1,5 @@
-# Ubuntu 24.04 (glibc 2.39) + CUDA 12.8 + cuDNN 9
-FROM nvidia/cuda:12.8.0-cudnn9-runtime-ubuntu24.04
+# Ubuntu 24.04 (glibc 2.39). CUDA runtime will come from PyTorch cu128 wheels.
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=UTC \
@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     PYTHONUNBUFFERED=1
 
-# Base OS deps
+# Base OS deps (includes the OpenGL libs some nodes want)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common ca-certificates curl git git-lfs \
     build-essential pkg-config sudo \
@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtk-3-0 ffmpeg unzip p7zip-full wget \
  && rm -rf /var/lib/apt/lists/*
 
-# Python 3.10 alongside system 3.12 (keep ABI for cp310 native nodes)
+# Python 3.10 (needed for cp310 native nodes)
 RUN add-apt-repository -y ppa:deadsnakes/ppa && apt-get update && \
     apt-get install -y --no-install-recommends python3.10 python3.10-venv python3.10-distutils && \
     rm -rf /var/lib/apt/lists/*
@@ -38,14 +38,15 @@ ENV PATH="${VENV_DIR}/bin:${PATH}"
 # ComfyUI
 RUN git clone --depth=1 https://github.com/comfyanonymous/ComfyUI.git /workspace/ComfyUI
 
-# Torch 2.8.0 + CUDA 12.8 wheels
+# Torch 2.8.0 + CUDA 12.8 wheels (CUDA runtime bundled in wheel)
 RUN pip install --upgrade pip wheel setuptools && \
-    pip install torch==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cu128
+    pip install torch==2.8.0+cu128 torchvision==0.19.0+cu128 torchaudio==2.8.0+cu128 \
+        --extra-index-url https://download.pytorch.org/whl/cu128
 
 # Core deps
 RUN pip install -r /workspace/ComfyUI/requirements.txt
 
-# Optional manager
+# Optional: ComfyUI Manager
 RUN pip install comfyui-manager
 
 # ETUR node (latest main)
