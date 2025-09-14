@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export PYTHONUNBUFFERED=1
-export COMFYUI_PATH=/workspace/ComfyUI
-export VENV_DIR=/opt/venvs/comfyui-perf
-export TBG_API_KEY="${TBG_API_KEY:-}"   # optional for ETUR PRO
-: "${XFORMERS_FORCE_DISABLE_FLASH_ATTN:=1}"
-export XFORMERS_FORCE_DISABLE_FLASH_ATTN
+VENV_DIR="${RUNPOD_VENV:-/workspace/.venvs/comfyui-perf}"
+COMFY_PATH="${COMFY_PATH:-/workspace/ComfyUI}"
+COMFY_HOST="${COMFY_HOST:-0.0.0.0}"
+COMFY_PORT="${COMFY_PORT:-3000}"
+EXTRA_ARGS="${EXTRA_ARGS:-}"
 
-cd "$COMFYUI_PATH"
+if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
+  echo "[FATAL] Missing venv at ${VENV_DIR} (expected ${VENV_DIR}/bin/python)."
+  exit 1
+fi
+if [[ ! -f "${COMFY_PATH}/main.py" ]]; then
+  echo "[FATAL] Missing ComfyUI at ${COMFY_PATH}/main.py."
+  exit 1
+fi
 
-# Quick canary info
-python --version
-python -c "import sys,platform; print('glibc:', platform.libc_ver())"
-ldd --version | head -n1 || true
+export PATH="${VENV_DIR}/bin:${PATH}"
+cd "${COMFY_PATH}"
 
-# Free requested port if reused
-fuser -k ${PORT:-3000}/tcp 2>/dev/null || true
+echo "[INFO] Using python: $(command -v python)"
+python --version || true
 
-# Launch (PORT can be 3000 or 3001)
-exec python main.py --listen 0.0.0.0 --port "${PORT:-3000}"
+echo "[ComfyUI] starting on ${COMFY_HOST}:${COMFY_PORT}"
+exec python main.py --listen "${COMFY_HOST}" --port "${COMFY_PORT}" ${EXTRA_ARGS}
