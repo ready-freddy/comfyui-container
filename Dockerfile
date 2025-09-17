@@ -10,14 +10,26 @@ ENV DEBIAN_FRONTEND=noninteractive \
     COMFY_PORT=3000 \
     CODE_SERVER_PORT=3100 \
     AI_TOOLKIT_PORT=8675 \
-    START_COMFYUI=0
+    START_COMFYUI=0 \
+    TINI_SUBREAPER=1
 
-# OS + Python + build tools
+# OS + Python + build tools (extended)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git tini \
       python3 python3-venv python3-pip \
-      build-essential g++ pkg-config \
-      libgl1 libglib2.0-0 \
+      # toolchain
+      build-essential g++ cmake pkg-config \
+      # Python headers (fixes Python.h for insightface/PuLID)
+      python3.12-dev libpython3.12-dev \
+      # common CV/media libs
+      libgl1 libglib2.0-0 ffmpeg \
+      # image codecs
+      libjpeg-turbo8 libpng16-16 libtiff6 libwebp7 libopenexr-3-1 \
+      # scientific/crypto headers
+      libopenblas-dev libssl-dev libffi-dev \
+      # QoL & future-proofing
+      unzip zip wget \
+      rustc cargo git-lfs \
     && rm -rf /var/lib/apt/lists/*
 
 # code-server (fixed version)
@@ -39,4 +51,5 @@ EXPOSE 3000 3100 8675
 USER comfy
 WORKDIR /workspace
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/run-comfy.sh"]
+# tini as PID1 with subreaper (silences warning)
+ENTRYPOINT ["/usr/bin/tini", "-s", "--", "/usr/local/bin/run-comfy.sh"]
