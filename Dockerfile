@@ -1,4 +1,4 @@
- name: Build & Push (py312 • cu128)
+name: Build & Push (py312 • cu128)
 
 on:
   workflow_dispatch:
