@@ -1,48 +1,43 @@
-# CUDA 12.8 runtime on Ubuntu 22.04 (works with RTX 5090 / CUDA 12.8)
-FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
+# Ubuntu 24.04 + CUDA 12.8 (cudnn runtime); Python 3.12 is native
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+    TZ=UTC \
+    PIP_NO_CACHE_DIR=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_ROOT_USER_ACTION=ignore \
-    WORKDIR_PATH=/workspace \
     VENV_PATH=/workspace/.venvs/comfyui-perf \
+    APP_PATH=/workspace/ComfyUI \
     COMFY_PORT=3000 \
-    CODESERVER_PORT=3100 \
-    HF_HOME=/workspace/.cache/huggingface \
-    PIP_CACHE_DIR=/workspace/.cache/pip
+    CODE_SERVER_PORT=3100 \
+    ENABLE_CODE_SERVER=1 \
+    START_COMFYUI=0
 
-# System deps (incl. build tools in case xformers needs to compile)
+# Runtime deps + build toolchain (incl. g++ for insightface etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    software-properties-common curl wget git ca-certificates \
-    build-essential pkg-config tmux tini supervisor \
-    ffmpeg libgl1 libglib2.0-0 \
-    ninja-build cmake \
-    && rm -rf /var/lib/apt/lists/*
+    software-properties-common ca-certificates curl wget git git-lfs \
+    libgl1 libopengl0 libglib2.0-0 libsm6 libxext6 libxrender1 \
+    libgtk-3-0 ffmpeg unzip p7zip-full \
+    build-essential g++ pkg-config python3 python3-venv python3-distutils python3-dev \
+ && rm -rf /var/lib/apt/lists/*
 
-# Python 3.12 (clean on 22.04 via deadsnakes)
-RUN add-apt-repository ppa:deadsnakes/ppa -y && \
-    apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 python3.12-venv python3.12-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Copy in our wrapper script from repo → container
+COPY --chmod=0755 images/comfyui-ubuntu24.04-py312/run-comfy.sh /usr/local/bin/run-comfy.sh
 
-# code-server (official installer is fine in containers)
-RUN curl -fsSL https://code-server.dev/install.sh | sh
+# Install code-server (fixed version, like before)
+RUN set -eux; \
+  curl -fsSL https://github.com/coder/code-server/releases/download/v4.89.1/code-server-4.89.1-linux-amd64.tar.gz \
+  | tar xz -C /opt && \
+  ln -sf /opt/code-server-4.89.1-linux-amd64/bin/code-server /usr/local/bin/code-server
 
-# Prepare workspace/caches
-RUN mkdir -p /workspace $HF_HOME $PIP_CACHE_DIR
+# Non-root user + workspace
+RUN useradd -m -s /bin/bash comfy || true && \
+    mkdir -p /workspace && chown -R comfy:comfy /workspace
 
-# Supervisor config & bootstrap script
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY startup.sh /usr/local/bin/startup.sh
-RUN chmod +x /usr/local/bin/startup.sh
-
+USER comfy
 WORKDIR /workspace
 
-# Expose ComfyUI + code-server (and optional Comfy fallback 3001)
-EXPOSE 3000 3001 3100
+# Expose: ComfyUI (3000), code-server (3100), AI-Toolkit (8675)
+EXPOSE 3000 3100 8675
 
-# Run both services under supervisord; wrap with tini as PID 1
-ENTRYPOINT ["/usr/bin/tini","--"]
-CMD ["/usr/bin/supervisord","-c","/etc/supervisor/conf.d/supervisord.conf"]
+# Entrypoint is our wrapper (manual-only ComfyUI, auto code-server)
+ENTRYPOINT ["/usr/local/bin/run-comfy.sh"]
