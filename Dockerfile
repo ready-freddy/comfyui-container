@@ -1,43 +1,52 @@
-# Ubuntu 24.04 + CUDA 12.8 (cudnn runtime); Python 3.12 is native
-FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04
+ name: Build & Push (py312 • cu128)
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    TZ=UTC \
-    PIP_NO_CACHE_DIR=1 \
-    PYTHONUNBUFFERED=1 \
-    VENV_PATH=/workspace/.venvs/comfyui-perf \
-    APP_PATH=/workspace/ComfyUI \
-    COMFY_PORT=3000 \
-    CODE_SERVER_PORT=3100 \
-    ENABLE_CODE_SERVER=1 \
-    START_COMFYUI=0
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to push (e.g., cu128-py312-v1 or 2025-09-17a)"
+        required: true
+        default: "cu128-py312-v1"
+      image_name:
+        description: "Full image name (registry/owner/name)"
+        required: true
+        default: "ghcr.io/${{ github.repository_owner }}/comfyui-container"
 
-# Runtime deps + build toolchain (incl. g++ for insightface etc.)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    software-properties-common ca-certificates curl wget git git-lfs \
-    libgl1 libopengl0 libglib2.0-0 libsm6 libxext6 libxrender1 \
-    libgtk-3-0 ffmpeg unzip p7zip-full \
-    build-essential g++ pkg-config python3 python3-venv python3-distutils python3-dev \
- && rm -rf /var/lib/apt/lists/*
+permissions:
+  contents: read
+  packages: write
 
-# Copy in our wrapper script from repo → container
-COPY --chmod=0755 images/comfyui-ubuntu24.04-py312/run-comfy.sh /usr/local/bin/run-comfy.sh
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ${{ inputs.image_name }}
+      IMAGE_TAG:  ${{ inputs.tag }}
 
-# Install code-server (fixed version, like before)
-RUN set -eux; \
-  curl -fsSL https://github.com/coder/code-server/releases/download/v4.89.1/code-server-4.89.1-linux-amd64.tar.gz \
-  | tar xz -C /opt && \
-  ln -sf /opt/code-server-4.89.1-linux-amd64/bin/code-server /usr/local/bin/code-server
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
 
-# Non-root user + workspace
-RUN useradd -m -s /bin/bash comfy || true && \
-    mkdir -p /workspace && chown -R comfy:comfy /workspace
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
-USER comfy
-WORKDIR /workspace
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-# Expose: ComfyUI (3000), code-server (3100), AI-Toolkit (8675)
-EXPOSE 3000 3100 8675
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
-# Entrypoint is our wrapper (manual-only ComfyUI, auto code-server)
-ENTRYPOINT ["/usr/local/bin/run-comfy.sh"]
+      - name: Announce
+        run: |
+          echo "✅ Pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "Pull with: docker pull ${IMAGE_NAME}:${IMAGE_TAG}"
