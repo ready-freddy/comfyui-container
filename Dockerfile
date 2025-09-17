@@ -13,36 +13,34 @@ ENV DEBIAN_FRONTEND=noninteractive \
     START_COMFYUI=0 \
     TINI_SUBREAPER=1
 
-# OS + Python + build tools (extended)
+# --- System deps (toolchain + Python headers + common CV/media/runtime libs) ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git tini \
-      python3 python3-venv python3-pip \
-      # toolchain
+      # core toolchain
       build-essential g++ cmake pkg-config \
-      # Python headers (fixes Python.h for insightface/PuLID)
+      # python + headers (fixes Python.h)
+      python3 python3-venv python3-pip \
       python3.12-dev libpython3.12-dev \
       # common CV/media libs
       libgl1 libglib2.0-0 ffmpeg \
-      # image codecs
-      libjpeg-turbo8 libpng16-16 libtiff6 libwebp7 libopenexr-3-1 \
       # scientific/crypto headers
       libopenblas-dev libssl-dev libffi-dev \
-      # QoL & future-proofing
-      unzip zip wget \
+      # ops/QoL
+      ca-certificates curl wget git unzip zip tini \
+      # future-proof (optional but harmless)
       rustc cargo git-lfs \
     && rm -rf /var/lib/apt/lists/*
 
-# code-server (fixed version)
+# --- code-server (fixed version) ---
 ENV CODE_SERVER_VERSION=4.89.1
 RUN curl -fsSL https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_amd64.deb -o /tmp/code-server.deb && \
     apt-get update && apt-get install -y /tmp/code-server.deb && \
     rm -f /tmp/code-server.deb && rm -rf /var/lib/apt/lists/*
 
-# Non-root user + workspace
+# --- Non-root user + workspace ---
 RUN useradd -m -s /bin/bash comfy && \
     mkdir -p /workspace && chown -R comfy:comfy /workspace
 
-# Copy startup script
+# --- Startup script ---
 COPY images/comfyui-ubuntu24.04-py312/run-comfy.sh /usr/local/bin/run-comfy.sh
 RUN chmod +x /usr/local/bin/run-comfy.sh
 
