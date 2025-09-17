@@ -4,15 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to push (e.g., cu128-py312-v2 or 2025-09-17h)"
+        description: "Image tag to push (e.g., cu128-py312-v1 or 2025-09-17a)"
         required: true
-        default: "cu128-py312-v2"
-      image_name:
-        description: "Full image name (registry/owner/name)"
-        required: true
-        default: "ghcr.io/${{ github.repository_owner }}/comfyui-container"
-  push:
-    branches: ["feat/ubuntu24.04-py312-cu128"]  # only this branch
+        default: "cu128-py312-v1"
 
 permissions:
   contents: read
@@ -22,14 +16,14 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     env:
-      IMAGE_NAME: ${{ github.event.inputs.image_name || format('ghcr.io/{0}/comfyui-container', github.repository_owner) }}
-      IMAGE_TAG:  ${{ github.event.inputs.tag || 'cu128-py312-v2' }}
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/comfyui-container
+      IMAGE_TAG:  ${{ inputs.tag }}
 
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
 
-      - name: Set up Buildx
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
@@ -39,7 +33,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
