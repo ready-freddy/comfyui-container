@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ---- Config (can be overridden via env) ----
+# ---- Config (override via env if needed) ----
 VENV_PATH="${VENV_PATH:-/workspace/.venvs/comfyui-perf}"
 APP_PATH="${APP_PATH:-/workspace/ComfyUI}"
 COMFY_PORT="${COMFY_PORT:-3000}"
@@ -10,10 +10,9 @@ AI_TOOLKIT_PORT="${AI_TOOLKIT_PORT:-8675}"
 START_COMFYUI="${START_COMFYUI:-0}"
 
 log(){ printf "[run-comfy] %s\n" "$*"; }
-
 mkdir -p /workspace/logs
 
-# 1) Ensure venv exists (no nukes)
+# 1) Ensure venv exists (idempotent)
 if [ ! -x "${VENV_PATH}/bin/python" ]; then
   log "Creating venv at ${VENV_PATH}"
   mkdir -p "$(dirname "${VENV_PATH}")"
@@ -30,9 +29,9 @@ else
   log "code-server already running"
 fi
 
-# 3) Optional: AI-Toolkit port is reserved; launch later if needed.
+# 3) (Port reserved for AI-Toolkit on :${AI_TOOLKIT_PORT})
 
-# 4) ComfyUI manual start function
+# 4) ComfyUI manual starter
 start_comfy() {
   if [ ! -f "${APP_PATH}/main.py" ]; then
     log "ComfyUI not found at ${APP_PATH}. Mount or clone before starting."
@@ -53,7 +52,7 @@ start_comfy() {
 if [ "${START_COMFYUI}" = "1" ]; then
   start_comfy || true
 else
-  log "ComfyUI is manual-only. To start inside the container:"
+  log "ComfyUI is manual-only. Start later with:"
   log "  /usr/local/bin/run-comfy.sh comfy"
 fi
 
