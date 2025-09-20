@@ -12,6 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CODE_SERVER_PORT=3100 \
     AI_TOOLKIT_PORT=8675 \
     START_COMFYUI=0 \
+    START_AI_TOOLKIT=0 \
     TINI_SUBREAPER=1
 
 # --- System deps (toolchain + Python headers + common CV/media/runtime libs) ---
@@ -36,17 +37,31 @@ RUN useradd -m -s /bin/bash comfy && \
     mkdir -p /workspace && chown -R comfy:comfy /workspace
 
 # --- Image venv + base Python deps (baked, later mirrored to /workspace if missing) ---
-RUN python3 -m venv ${IMAGE_VENV} && \
-    ${IMAGE_VENV}/bin/python -m pip install --upgrade pip wheel setuptools && \
-    ${IMAGE_VENV}/bin/python -m pip install \
-        "torch==2.8.0" --index-url https://download.pytorch.org/whl/cu128 && \
-    ${IMAGE_VENV}/bin/python -m pip install \
-        onnx onnxruntime-gpu==1.18.1 \
-        "numpy<2.1" pillow \
-        "uvicorn<1.0" "fastapi<1.0" \
-        requests tqdm \
-        opencv-python-headless rembg \
-    && true
+RUN python3 -m venv ${IMAGE_VENV}
+RUN ${IMAGE_VENV}/bin/python -m pip install --upgrade pip wheel setuptools
+
+# 1) Torch first (clear failure surface)
+RUN ${IMAGE_VENV}/bin/python -m pip install \
+      --index-url https://download.pytorch.org/whl/cu128 \
+      "torch==2.8.0"
+
+# 2) Core libs (manylinux wheels for py312)
+RUN ${IMAGE_VENV}/bin/python -m pip install \
+      "numpy<2.1" \
+      pillow \
+      tqdm \
+      requests \
+      onnx \
+      "onnxruntime-gpu==1.18.1"
+
+# 3) OpenCV as wheel only (avoid source builds)
+RUN ${IMAGE_VENV}/bin/python -m pip install --only-binary=:all: "opencv-python-headless==4.10.*"
+
+# 4) Web stack (narrow/pinned)
+RUN ${IMAGE_VENV}/bin/python -m pip install "uvicorn<1.0" "fastapi<1.0"
+
+# 5) rembg WITHOUT deps (we control ORT explicitly)
+RUN ${IMAGE_VENV}/bin/python -m pip install --no-deps rembg
 
 # --- Build GroundingDINO wheel at image build (no runtime compiles) ---
 ARG GDINO_REPO=https://github.com/IDEA-Research/GroundingDINO.git
