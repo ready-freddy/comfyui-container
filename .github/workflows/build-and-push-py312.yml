@@ -18,16 +18,67 @@ jobs:
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/comfyui-container
       IMAGE_TAG:  ${{ inputs.tag }}
+
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
 
-      # Free space on GitHub runner (prevents "No space left on device")
+      # ---- Manual disk cleanup (no external action needed) ----
       - name: Free disk space on runner
-        uses: jlumbroso/free-disk-space@v1
+        run: |
+          set -euxo pipefail
+          echo "Before:"
+          df -h
+          docker system df || true
+
+          # Stop any leftover containers
+          docker ps -aq | xargs -r docker stop || true
+          docker ps -aq | xargs -r docker rm   || true
+
+          # Remove all Docker images / layers / cache
+          docker images -aq | xargs -r docker rmi -f || true
+          docker builder prune -af || true
+          docker system prune -af  || true
+
+          # Remove language stacks and SDKs we don't need
+          sudo rm -rf /usr/local/lib/android  || true
+          sudo rm -rf /usr/share/dotnet       || true
+          sudo rm -rf /opt/ghc                || true
+          sudo rm -rf /usr/local/share/boost  || true
+          sudo rm -rf /usr/share/swift        || true
+          # Hosted toolcache (Node, Python, etc.) — big but safe to remove for Docker-only jobs
+          sudo rm -rf /opt/hostedtoolcache    || true
+
+          echo "After:"
+          df -h
+          docker system df || true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
         with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
+          install: true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Announce
+        run: |
+          echo "✅ Pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "Pull with: docker pull ${IMAGE_NAME}:${IMAGE_TAG}"
