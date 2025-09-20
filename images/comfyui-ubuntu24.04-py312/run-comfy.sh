@@ -106,15 +106,4 @@ start_comfy() {
 if [ "${START_COMFYUI}" = "1" ]; then
   start_comfy || true
 else
-  log "ComfyUI is manual-only. Start later with:"
-  log "  /usr/local/bin/run-comfy.sh comfy"
-fi
-
-# Subcommand to start on demand
-if [ "${1:-}" = "comfy" ]; then
-  start_comfy
-  exit 0
-fi
-
-log "Container ready. code-server :${CODE_SERVER_PORT} | AI Toolkit (reserved) :${AI_TOOLKIT_PORT} | ComfyUI manual :${COMFY_PORT}"
-tail -f /dev/null
+  log "ComfyUI is manual-only. Start
