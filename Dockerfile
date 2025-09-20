@@ -15,6 +15,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     START_AI_TOOLKIT=0 \
     TINI_SUBREAPER=1
 
+# keep pip cache out of layers and purge after installs
+ENV PIP_CACHE_DIR=/tmp/pipcache
+
 # --- System deps (toolchain + Python headers + common CV/media/runtime libs) ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential g++ cmake pkg-config \
@@ -38,7 +41,7 @@ RUN useradd -m -s /bin/bash comfy && \
 
 # --- Image venv + base Python deps (baked, later mirrored to /workspace if missing) ---
 RUN python3 -m venv ${IMAGE_VENV}
-RUN ${IMAGE_VENV}/bin/python -m pip install --upgrade pip wheel setuptools
+RUN ${IMAGE_VENV}/bin/python -m pip install --upgrade pip wheel setuptools && rm -rf $PIP_CACHE_DIR
 
 # 1) Torch first (resilient cu128 resolver)
 ARG TORCH_PREFERRED=2.8.0
@@ -48,6 +51,7 @@ EXTRA="--extra-index-url https://download.pytorch.org/whl/cu128"
 for SPEC in "torch==${TORCH_PREFERRED}" "torch==2.8.*" "torch==2.7.*"; do
   if "$VENV_BIN" -m pip install $EXTRA "$SPEC"; then
     echo "[torch] Installed $SPEC from cu128 wheels"
+    "$VENV_BIN" -m pip cache purge || true
     exit 0
   fi
 done
@@ -62,16 +66,17 @@ RUN ${IMAGE_VENV}/bin/python -m pip install \
       tqdm \
       requests \
       onnx \
-      "onnxruntime-gpu==1.18.1"
+      "onnxruntime-gpu==1.18.1" \
+    && rm -rf $PIP_CACHE_DIR
 
 # 3) OpenCV as wheel only (avoid source builds)
-RUN ${IMAGE_VENV}/bin/python -m pip install --only-binary=:all: "opencv-python-headless==4.10.*"
+RUN ${IMAGE_VENV}/bin/python -m pip install --only-binary=:all: "opencv-python-headless==4.10.*" && rm -rf $PIP_CACHE_DIR
 
 # 4) Web stack (narrow/pinned)
-RUN ${IMAGE_VENV}/bin/python -m pip install "uvicorn<1.0" "fastapi<1.0"
+RUN ${IMAGE_VENV}/bin/python -m pip install "uvicorn<1.0" "fastapi<1.0" && rm -rf $PIP_CACHE_DIR
 
 # 5) rembg WITHOUT deps (we control ORT explicitly)
-RUN ${IMAGE_VENV}/bin/python -m pip install --no-deps rembg
+RUN ${IMAGE_VENV}/bin/python -m pip install --no-deps rembg && rm -rf $PIP_CACHE_DIR
 
 # --- Build GroundingDINO wheel at image build (no runtime compiles) ---
 ARG GDINO_REPO=https://github.com/IDEA-Research/GroundingDINO.git
@@ -82,7 +87,7 @@ RUN mkdir -p /opt/wheels /opt/src && cd /opt/src && \
     ${IMAGE_VENV}/bin/python -m pip install --upgrade pip wheel setuptools && \
     FORCE_CUDA=1 ${IMAGE_VENV}/bin/python -m pip wheel . -w /opt/wheels && \
     ${IMAGE_VENV}/bin/python -m pip install --no-index --find-links=/opt/wheels GroundingDINO && \
-    rm -rf /opt/src/GroundingDINO
+    rm -rf /opt/src/GroundingDINO && rm -rf $PIP_CACHE_DIR
 
 # --- Ensure perms for comfy user over baked assets ---
 RUN mkdir -p /opt/venvs /opt/wheels && \
