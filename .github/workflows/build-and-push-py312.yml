@@ -23,40 +23,32 @@ jobs:
       - name: Check out branch
         uses: actions/checkout@v4
 
-      # ---- Manual disk cleanup (no external action needed) ----
       - name: Free disk space on runner
         run: |
           set -euxo pipefail
-          echo "Before:"
-          df -h
+          echo "Before:"; df -h || true
           docker system df || true
-
-          # Stop any leftover containers
           docker ps -aq | xargs -r docker stop || true
           docker ps -aq | xargs -r docker rm   || true
-
-          # Remove all Docker images / layers / cache
           docker images -aq | xargs -r docker rmi -f || true
           docker builder prune -af || true
-          docker system prune -af  || true
-
-          # Remove language stacks and SDKs we don't need
-          sudo rm -rf /usr/local/lib/android  || true
-          sudo rm -rf /usr/share/dotnet       || true
-          sudo rm -rf /opt/ghc                || true
-          sudo rm -rf /usr/local/share/boost  || true
-          sudo rm -rf /usr/share/swift        || true
-          # Hosted toolcache (Node, Python, etc.) — big but safe to remove for Docker-only jobs
-          sudo rm -rf /opt/hostedtoolcache    || true
-
-          echo "After:"
-          df -h
+          docker system  prune -af --volumes || true
+          sudo rm -rf /usr/local/lib/android  /usr/share/dotnet  /opt/ghc  /opt/hostedtoolcache || true
+          echo "After:"; df -h || true
           docker system df || true
 
-      - name: Set up Docker Buildx
+      - name: Set up Docker Buildx (fresh)
         uses: docker/setup-buildx-action@v3
         with:
           install: true
+          driver-opts: image=moby/buildkit:latest
+
+      - name: Log Dockerfile snippet (first 120 lines)
+        run: sed -n '1,120p' Dockerfile
+
+      - name: Sanity check (refuse baked-venv/compile images)
+        run: |
+          ! grep -qE '(/opt/venvs|pip install (torch|onnxruntime|opencv)|FORCE_CUDA)' Dockerfile || { echo "Refusing to build baked-venv/compile image"; exit 1; }
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -65,7 +57,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build and push image (no cache)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -75,8 +67,10 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
             ${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          no-cache: true
+          pull: true
+          provenance: false
+          sbom: false
 
       - name: Announce
         run: |
