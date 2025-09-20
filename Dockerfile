@@ -40,10 +40,20 @@ RUN useradd -m -s /bin/bash comfy && \
 RUN python3 -m venv ${IMAGE_VENV}
 RUN ${IMAGE_VENV}/bin/python -m pip install --upgrade pip wheel setuptools
 
-# 1) Torch first (clear failure surface)
-RUN ${IMAGE_VENV}/bin/python -m pip install \
-      --index-url https://download.pytorch.org/whl/cu128 \
-      "torch==2.8.0"
+# 1) Torch first (resilient cu128 resolver)
+ARG TORCH_PREFERRED=2.8.0
+RUN bash -euxo pipefail <<'SH'
+VENV_BIN="${IMAGE_VENV}/bin/python"
+EXTRA="--extra-index-url https://download.pytorch.org/whl/cu128"
+for SPEC in "torch==${TORCH_PREFERRED}" "torch==2.8.*" "torch==2.7.*"; do
+  if "$VENV_BIN" -m pip install $EXTRA "$SPEC"; then
+    echo "[torch] Installed $SPEC from cu128 wheels"
+    exit 0
+  fi
+done
+echo "[torch] No matching cu128 wheel found for Py312 — aborting" >&2
+exit 1
+SH
 
 # 2) Core libs (manylinux wheels for py312)
 RUN ${IMAGE_VENV}/bin/python -m pip install \
