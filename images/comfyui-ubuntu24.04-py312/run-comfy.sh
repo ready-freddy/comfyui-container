@@ -9,11 +9,10 @@ CODE_SERVER_PORT="${CODE_SERVER_PORT:-3100}"
 AI_TOOLKIT_PORT="${AI_TOOLKIT_PORT:-8675}"
 START_COMFYUI="${START_COMFYUI:-0}"
 START_AI_TOOLKIT="${START_AI_TOOLKIT:-0}"
-IMAGE_VENV="${IMAGE_VENV:-/opt/venvs/comfyui-perf}"   # unused in slim image; harmless if absent
 
 # Feature flags (future-proof, optional)
-PACK_PRESET="${PACK_PRESET:-core}"   # core|none (manifests are optional)
-WITH_SAM="${WITH_SAM:-0}"            # 0/1 (wheel-only SAM variants)
+PACK_PRESET="${PACK_PRESET:-core}"   # core|none
+WITH_SAM="${WITH_SAM:-0}"            # 0/1 (wheel-only)
 WITH_DINO="${WITH_DINO:-0}"          # must stay 0 (no compile path)
 PIP_CONSTRAINTS="${PIP_CONSTRAINTS:-}"  # optional: /workspace/constraints.txt
 
@@ -21,13 +20,6 @@ LOG_DIR="/workspace/logs"
 mkdir -p "$LOG_DIR"
 
 log(){ printf "[run-comfy] %s\n" "$*"; }
-
-# 0) Seed from image (if present; not expected in slim image)
-if [ ! -x "${VENV_PATH}/bin/python" ] && [ -x "${IMAGE_VENV}/bin/python" ]; then
-  log "Seeding venv from image → ${VENV_PATH}"
-  mkdir -p "$(dirname "${VENV_PATH}")"
-  cp -a "${IMAGE_VENV}" "${VENV_PATH}"
-fi
 
 # 1) Ensure venv exists
 if [ ! -x "${VENV_PATH}/bin/python" ]; then
@@ -58,7 +50,7 @@ if [ ! -f "${VENV_PATH}/.deps.ok" ]; then
   # rembg without deps (we control ORT)
   pip_install --no-deps rembg
 
-  # Optional: SAM (must be wheel-only; safe to leave off)
+  # Optional: SAM (wheel-only)
   if [ "${WITH_SAM}" = "1" ]; then
     pip_install --only-binary=:all: "segment-anything==*" || true
   fi
@@ -80,7 +72,7 @@ else
   log "code-server already running"
 fi
 
-# 3) AI Toolkit (reserved)
+# 3) AI Toolkit (reserved; disabled by default)
 start_ai_toolkit() {
   local START_SCRIPT="/workspace/ai-toolkit/start.sh"
   if [ ! -x "$START_SCRIPT" ]; then
