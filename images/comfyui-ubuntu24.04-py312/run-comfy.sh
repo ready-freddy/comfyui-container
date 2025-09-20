@@ -8,10 +8,13 @@ COMFY_PORT="${COMFY_PORT:-3000}"
 CODE_SERVER_PORT="${CODE_SERVER_PORT:-3100}"
 AI_TOOLKIT_PORT="${AI_TOOLKIT_PORT:-8675}"
 START_COMFYUI="${START_COMFYUI:-0}"
+START_AI_TOOLKIT="${START_AI_TOOLKIT:-0}"
 IMAGE_VENV="${IMAGE_VENV:-/opt/venvs/comfyui-perf}"   # baked venv (if image provides)
 
+LOG_DIR="/workspace/logs"
+mkdir -p "$LOG_DIR"
+
 log(){ printf "[run-comfy] %s\n" "$*"; }
-mkdir -p /workspace/logs
 
 # 0) Seed from image venv/wheels if missing (idempotent)
 if [ ! -x "${VENV_PATH}/bin/python" ] && [ -x "${IMAGE_VENV}/bin/python" ]; then
@@ -36,12 +39,31 @@ fi
 if ! pgrep -af "code-server.*--bind-addr 0.0.0.0:${CODE_SERVER_PORT}" >/dev/null 2>&1; then
   log "Starting code-server on :${CODE_SERVER_PORT}"
   nohup code-server --bind-addr 0.0.0.0:${CODE_SERVER_PORT} /workspace \
-    >/workspace/logs/code-server.log 2>&1 &
+    >"${LOG_DIR}/code-server.log" 2>&1 &
 else
   log "code-server already running"
 fi
 
-# 3) (Port reserved for AI-Toolkit on :${AI_TOOLKIT_PORT})
+# 3) (Reserved) AI Toolkit block — OFF by default; requires /workspace/ai-toolkit/start.sh
+start_ai_toolkit() {
+  local START_SCRIPT="/workspace/ai-toolkit/start.sh"
+  if [ ! -x "$START_SCRIPT" ]; then
+    log "AI Toolkit start script not found at ${START_SCRIPT}; skipping."
+    return 0
+  fi
+  if pgrep -af "ai-toolkit.*:${AI_TOOLKIT_PORT}" >/dev/null 2>&1 || nc -z 127.0.0.1 "${AI_TOOLKIT_PORT}" >/dev/null 2>&1; then
+    log "AI Toolkit already running or port ${AI_TOOLKIT_PORT} in use; skipping."
+    return 0
+  fi
+  log "Starting AI Toolkit on :${AI_TOOLKIT_PORT}"
+  nohup "${START_SCRIPT}" --port "${AI_TOOLKIT_PORT}" \
+    >"${LOG_DIR}/ai-toolkit.log" 2>&1 &
+}
+if [ "${START_AI_TOOLKIT}" = "1" ]; then
+  start_ai_toolkit || true
+else
+  log "AI Toolkit is disabled (START_AI_TOOLKIT=0). Port reserved: ${AI_TOOLKIT_PORT}"
+fi
 
 # 4) ComfyUI manual starter
 is_port_in_use() {
@@ -64,8 +86,8 @@ start_comfy() {
   log "Starting ComfyUI on :${COMFY_PORT}"
   nohup "${VENV_PATH}/bin/python" "${APP_PATH}/main.py" \
       --listen 0.0.0.0 --port "${COMFY_PORT}" \
-      >> /workspace/logs/comfyui.log 2>&1 &
-  log "ComfyUI started; tail: /workspace/logs/comfyui.log"
+      >> "${LOG_DIR}/comfyui.log" 2>&1 &
+  log "ComfyUI started; tail: ${LOG_DIR}/comfyui.log"
 
   # quick readiness probe + snapshot
   for i in $(seq 1 90); do
@@ -73,8 +95,8 @@ start_comfy() {
     if curl -fsS "http://127.0.0.1:${COMFY_PORT}/" >/dev/null 2>&1; then
       TS=$(date +%Y%m%dT%H%M%S)
       curl -fsS "http://127.0.0.1:${COMFY_PORT}/object_info?no_cache=1" \
-        -o "/workspace/logs/object_info.${TS}.json" || true
-      log "ComfyUI ready; snapshot saved: /workspace/logs/object_info.${TS}.json"
+        -o "${LOG_DIR}/object_info.${TS}.json" || true
+      log "ComfyUI ready; snapshot saved: ${LOG_DIR}/object_info.${TS}.json"
       break
     fi
   done
@@ -94,5 +116,5 @@ if [ "${1:-}" = "comfy" ]; then
   exit 0
 fi
 
-log "Container ready. code-server :${CODE_SERVER_PORT} | ComfyUI manual :${COMFY_PORT}"
+log "Container ready. code-server :${CODE_SERVER_PORT} | AI Toolkit (reserved) :${AI_TOOLKIT_PORT} | ComfyUI manual :${COMFY_PORT}"
 tail -f /dev/null
