@@ -7,16 +7,16 @@ ARG USERNAME=comfy
 ARG UID=1000
 ARG GID=1000
 
-# Base OS deps (only during image build; never apt inside running pods)
+# Base OS deps (image build only; never apt inside running pods)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl wget git tini sudo tzdata locales nano \
     python3 python3-venv python3-pip \
  && rm -rf /var/lib/apt/lists/*
 
-# Provide "python" alias (some tools expect it)
+# Provide "python" alias
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 
-# Locale
+# Locale & Python defaults
 RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1
@@ -36,10 +36,10 @@ RUN mkdir -p /workspace/{logs,models,notebooks,.venvs,ComfyUI,ai-toolkit,scripts
 COPY scripts/entrypoint.sh /scripts/entrypoint.sh
 COPY scripts/bootstrap.sh  /workspace/scripts/bootstrap.sh
 
-# Enforce executable bits inside the image (web UI cannot chmod)
+# Enforce exec bits (since web UI can't chmod)
 RUN chmod +x /scripts/entrypoint.sh /workspace/scripts/bootstrap.sh
 
-# Service toggles (ComfyUI manual by default)
+# Service toggles
 ENV START_COMFYUI=0 \
     START_CODE_SERVER=1 \
     START_OSTRIS=0 \
