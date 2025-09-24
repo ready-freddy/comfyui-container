@@ -7,13 +7,13 @@ ARG USERNAME=comfy
 ARG UID=1000
 ARG GID=1000
 
-# Base OS deps (image build only; never apt inside running pods)
+# Base OS deps (only during image build; never apt inside running pods)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl wget git tini sudo tzdata locales nano \
     python3 python3-venv python3-pip \
  && rm -rf /var/lib/apt/lists/*
 
-# Make sure "python" exists for tooling that expects it
+# Provide "python" alias (some tools expect it)
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 
 # Locale
@@ -35,6 +35,8 @@ WORKDIR /workspace
 RUN mkdir -p /workspace/{logs,models,notebooks,.venvs,ComfyUI,ai-toolkit,scripts,bin}
 COPY scripts/entrypoint.sh /scripts/entrypoint.sh
 COPY scripts/bootstrap.sh  /workspace/scripts/bootstrap.sh
+
+# Enforce executable bits inside the image (web UI cannot chmod)
 RUN chmod +x /scripts/entrypoint.sh /workspace/scripts/bootstrap.sh
 
 # Service toggles (ComfyUI manual by default)
