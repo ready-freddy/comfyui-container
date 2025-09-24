@@ -1,17 +1,39 @@
-# Keep builds lean
+# Git/CI
 .git
 .github
-*.md
-*.pdf
+.gitattributes
+.gitignore
+
+# Local env + junk
+.env
+*.swp
+__pycache__/
+*.egg-info/
+
+# Don’t ship runtime data into the image
+/workspace/
+/models/
+/logs/
+/notebooks/
+
+# Common heavy folders if someone checked them in by mistake
+ComfyUI/
+ai-toolkit/
+datasets/
+outputs/
+cache/
+checkpoints/
+
+# Media and archives
 *.png
 *.jpg
 *.jpeg
 *.gif
+*.tiff
+*.bmp
+*.mp4
+*.mov
 *.zip
 *.tar
 *.tar.gz
-/workspace/
-/venv/
-/.venv/
-/.env
-__pycache__/
+*.7z
