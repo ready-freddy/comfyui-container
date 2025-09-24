@@ -2,14 +2,12 @@
 set -euo pipefail
 
 VENV_BASE=/workspace/.venvs
-PYVER=3.12
-PY=/usr/bin/python${PYVER}
+PY=/usr/bin/python3
 LOG=/workspace/logs/bootstrap.$(date +%Y%m%dT%H%M%S).log
 
 echo "[bootstrap] begin" | tee -a "$LOG"
 mkdir -p /workspace/{.venvs,ComfyUI,ai-toolkit,models,notebooks,logs,bin}
 
-# --- helper: create venv if missing ---
 mkvenv () {
   local name="$1"
   local path="$VENV_BASE/$name"
@@ -24,14 +22,12 @@ mkvenv comfyui-perf
 mkvenv jupyter
 mkvenv ai-toolkit
 
-# --- Torch stack for CUDA 12.8 only (single image policy) ---
+# Torch stack for CUDA 12.8
 TORCH_SPEC='torch==2.8.0+cu128 torchvision==0.19.0+cu128 torchaudio==2.8.0+cu128 --index-url https://download.pytorch.org/whl/cu128'
 "$VENV_BASE/comfyui-perf/bin/pip" install $TORCH_SPEC onnx onnxruntime-gpu==1.18.1
 echo "[bootstrap] torch/onnx stack installed" | tee -a "$LOG"
 
-# --- service wrappers ---
-
-# ComfyUI launcher
+# Launchers
 cat >/workspace/bin/comfyctl <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -47,7 +43,6 @@ esac
 EOS
 chmod +x /workspace/bin/comfyctl
 
-# JupyterLab launcher
 cat >/workspace/bin/jupyterctl <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -61,21 +56,4 @@ case "${1:-start}" in
   *)     echo "usage: jupyterctl {start|stop|log}"; exit 2;;
 esac
 EOS
-chmod +x /workspace/bin/jupyterctl
-
-# Ostris placeholder (wire later)
-cat >/workspace/bin/ai-toolkitctl <<'EOS'
-#!/usr/bin/env bash
-set -euo pipefail
-VENV=/workspace/.venvs/ai-toolkit
-LOG=/workspace/logs/ai-toolkit.$(date +%Y%m%dT%H%M%S).log
-case "${1:-start}" in
-  start) echo "Ostris not wired yet; pin repo and update me." | tee -a "$LOG";;
-  stop)  pkill -f "ai-toolkit" || true; echo "Ostris stopped.";;
-  log)   tail -n 200 -f "$LOG" ;;
-  *)     echo "usage: ai-toolkitctl {start|stop|log}"; exit 2;;
-esac
-EOS
-chmod +x /workspace/bin/ai-toolkitctl
-
-echo "[bootstrap] done" | tee -a "$LOG"
+chmod +x /wo
