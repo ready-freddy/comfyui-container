@@ -1,48 +1,109 @@
-# Ubuntu 24.04 + CUDA 12.8 (cuDNN runtime); Python 3.12 is native
+# Dockerfile — Stable (main)
+# Ubuntu 24.04 + CUDA 12.8 runtime; no baked venvs/models; manual ComfyUI.
 FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    TZ=UTC \
-    PIP_NO_CACHE_DIR=1 \
-    PYTHONUNBUFFERED=1 \
-    VENV_PATH=/workspace/.venvs/comfyui-perf \
-    APP_PATH=/workspace/ComfyUI \
-    COMFY_PORT=3000 \
-    CODE_SERVER_PORT=3100 \
-    AI_TOOLKIT_PORT=8675 \
-    START_COMFYUI=0 \
-    START_AI_TOOLKIT=0 \
-    TINI_SUBREAPER=1 \
-    PIP_CACHE_DIR=/tmp/pipcache
+    LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
 
-# Minimal runtime deps (no compilers, no python-dev, no rust)
+# Minimal system deps (build-time only; NEVER apt inside a running pod)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-venv python3-pip \
-      libgl1 libglib2.0-0 ffmpeg \
-      ca-certificates curl wget git unzip zip tini git-lfs \
-    && rm -rf /var/lib/apt/lists/*
+      python3.12 python3.12-venv python3-pip git curl ca-certificates tini \
+  && rm -rf /var/lib/apt/lists/*
 
-# code-server
-ENV CODE_SERVER_VERSION=4.89.1
-RUN curl -fsSL https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_amd64.deb -o /tmp/code-server.deb \
- && apt-get update && apt-get install -y /tmp/code-server.deb \
- && rm -f /tmp/code-server.deb && rm -rf /var/lib/apt/lists/*
+# Workspace contract
+RUN mkdir -p /workspace/bin /workspace/logs /workspace/notebooks \
+    /workspace/models/{checkpoints,clip,vae,loras,ipadapter,controlnet,grounding} \
+    /workspace/.venvs /workspace/ComfyUI /workspace/ai-toolkit
 
-# Non-root user + workspace
-RUN useradd -m -s /bin/bash comfy \
- && mkdir -p /workspace && chown -R comfy:comfy /workspace
+# code-server (auto)
+ARG CODE_SERVER_VERSION=4.92.2
+RUN curl -fsSL https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-amd64.tar.gz \
+    | tar -xz -C /opt \
+ && ln -s /opt/code-server-${CODE_SERVER_VERSION}-linux-amd64/bin/code-server /usr/local/bin/code-server
 
-# ComfyUI skeleton (you can mount your own later)
-WORKDIR /workspace
-RUN git clone --depth=1 https://github.com/comfyanonymous/ComfyUI "${APP_PATH}"
+# Stable defaults & guardrails
+ENV COMFY_PORT=3000 \
+    CODE_SERVER_PORT=3100 \
+    AI_TOOLKIT_PORT=3400 \
+    COMFY_DISABLE_XFORMERS=1 \
+    XFORMERS_FORCE_DISABLE=1 \
+    PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb=128,expandable_segments=True,garbage_collection_threshold=0.9"
 
-# Startup script (keep this path in your repo)
-COPY images/comfyui-ubuntu24.04-py312/run-comfy.sh /usr/local/bin/run-comfy.sh
-RUN chmod +x /usr/local/bin/run-comfy.sh
+# Optional healthcheck: passes only when ComfyUI is running
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s \
+  CMD curl -fsS http://127.0.0.1:${COMFY_PORT}/ || exit 0
 
-EXPOSE 3000 3100 8675
+# Entrypoint: code-server auto; apps launched via helpers
+COPY --chown=root:root <<'BASH' /usr/local/bin/entrypoint.sh
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p /root/.local/share/code-server
+nohup code-server /workspace \
+  --bind-addr 0.0.0.0:${CODE_SERVER_PORT} \
+  --auth none >/workspace/logs/code-server.log 2>&1 &
+echo "[entrypoint] code-server :${CODE_SERVER_PORT}"
+# Keep container running; use /workspace/bin/* to start apps
+exec tail -f /workspace/logs/code-server.log
+BASH
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
-USER comfy
-WORKDIR /workspace
+# Helper launchers (installed at build so you have them from day one)
+COPY --chown=root:root <<'BASH' /workspace/bin/comfyctl
+#!/usr/bin/env bash
+set -euo pipefail
+VENV="/workspace/.venvs/comfyui-perf"
+PY="$VENV/bin/python"
+LOGDIR="/workspace/logs"
+PORT="${COMFY_PORT:-3000}"
+case "${1:-}" in
+  start)
+    pkill -f "python.*ComfyUI/main.py" || true
+    TS=$(date +%Y%m%dT%H%M%S); LOG="$LOGDIR/comfyui.$TS.run.log"
+    echo "[comfyctl] starting ComfyUI on :$PORT → $LOG"
+    nohup "$PY" -X faulthandler -u /workspace/ComfyUI/main.py \
+      --listen 0.0.0.0 --port "$PORT" >"$LOG" 2>&1 &
+    ;;
+  stop) pkill -f "python.*ComfyUI/main.py" || true; echo "[comfyctl] stopped" ;;
+  status)
+    if curl -fsS "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then
+      echo "ComfyUI READY on :$PORT"
+    else
+      echo "ComfyUI not running"
+    fi
+    ;;
+  *) echo "Usage: comfyctl {start|stop|status}"; exit 1;;
+esac
+BASH
 
-ENTRYPOINT ["/usr/bin/tini", "-s", "--", "/usr/local/bin/run-comfy.sh"]
+COPY --chown=root:root <<'BASH' /workspace/bin/ai-toolkitctl
+#!/usr/bin/env bash
+set -euo pipefail
+VENV="/workspace/.venvs/ai-toolkit"
+PY="$VENV/bin/python"
+LOGDIR="/workspace/logs"
+PORT="${AI_TOOLKIT_PORT:-3400}"
+APP="/workspace/ai-toolkit/app.py"
+case "${1:-}" in
+  start)
+    pkill -f "python.*ai-toolkit" || true
+    TS=$(date +%Y%m%dT%H%M%S); LOG="$LOGDIR/ai-toolkit.$TS.run.log"
+    echo "[ai-toolkitctl] starting Ostris on :$PORT → $LOG"
+    nohup "$PY" -X faulthandler -u "$APP" --port "$PORT" \
+      >"$LOG" 2>&1 &
+    ;;
+  stop) pkill -f "python.*ai-toolkit" || true; echo "[ai-toolkitctl] stopped" ;;
+  status)
+    if curl -fsS "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then
+      echo "ai-toolkit READY on :$PORT"
+    else
+      echo "ai-toolkit not running"
+    fi
+    ;;
+  *) echo "Usage: ai-toolkitctl {start|stop|status}"; exit 1;;
+esac
+BASH
+
+RUN chmod +x /workspace/bin/comfyctl /workspace/bin/ai-toolkitctl
+
+EXPOSE 3000 3100 3400
+ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/entrypoint.sh"]
