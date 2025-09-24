@@ -1,4 +1,3 @@
-# keep the image lean
 .git
 .gitignore
 .github/**/README.md
