@@ -1,43 +1,66 @@
-# syntax=docker/dockerfile:1.7
-ARG CUDA_TAG=12.8.0
-FROM nvidia/cuda:${CUDA_TAG}-cudnn-devel-ubuntu24.04
+name: build-and-push
 
-ARG DEBIAN_FRONTEND=noninteractive
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/build.yml'
+      - 'scripts/**'
+      - '.dockerignore'
+  workflow_dispatch: {}
 
-# Base OS deps (only during image build; never apt inside running pods)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl wget git tini tzdata locales nano \
-    python3 python3-venv python3-pip \
- && rm -rf /var/lib/apt/lists/*
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      REGISTRY: ghcr.io
 
-# Provide "python" alias
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-# Locale & Python defaults
-RUN locale-gen en_US.UTF-8
-ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
-ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1
+      - name: Debug tree
+        run: |
+          echo "::group::Repository tree"
+          ls -la
+          echo
+          echo "scripts/:"
+          ls -la scripts || true
+          echo "::endgroup::"
 
-# Ports contract
-EXPOSE 3000 3100 3400 3600
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-# Workdir + scripts
-WORKDIR /workspace
-RUN mkdir -p /workspace/{logs,models,notebooks,.venvs,ComfyUI,ai-toolkit,scripts,bin}
-COPY scripts/entrypoint.sh /scripts/entrypoint.sh
-COPY scripts/bootstrap.sh  /workspace/scripts/bootstrap.sh
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
-# Enforce exec bits (GitHub web UI can't chmod)
-RUN chmod +x /scripts/entrypoint.sh /workspace/scripts/bootstrap.sh
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-# Service toggles
-ENV START_COMFYUI=0 \
-    START_CODE_SERVER=1 \
-    START_OSTRIS=0 \
-    START_JUPYTER=0 \
-    COMFY_PORT=3000 \
-    CODE_SERVER_PORT=3100 \
-    OSTRIS_PORT=3400 \
-    JUPYTER_PORT=3600
+      - name: Compute image ref (lowercase)
+        id: vars
+        run: |
+          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          REPO_LC="$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')"
+          echo "ref=${OWNER_LC}/${REPO_LC}:cu128-py312-stable" >> "$GITHUB_OUTPUT"
 
-ENTRYPOINT ["/usr/bin/tini","-s","--","/scripts/entrypoint.sh"]
+      - name: Build & Push (cu128 only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          provenance: false
+          sbom: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.vars.outputs.ref }}
+          build-args: |
+            CUDA_TAG=12.8.0
