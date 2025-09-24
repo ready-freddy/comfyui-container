@@ -1,6 +1,4 @@
 # syntax=docker/dockerfile:1.7
-
-# Single target: CUDA 12.8 + Ubuntu 24.04 + Python 3.12
 ARG CUDA_TAG=12.8.0
 FROM nvidia/cuda:${CUDA_TAG}-cudnn-devel-ubuntu24.04
 
@@ -9,15 +7,19 @@ ARG USERNAME=comfy
 ARG UID=1000
 ARG GID=1000
 
-# Base OS deps (only in image build; never apt inside running pods)
+# Base OS deps (image build only; never apt inside running pods)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl wget git tini python3.12 python3.12-venv python3.12-distutils \
-    sudo tzdata locales nano \
+    ca-certificates curl wget git tini sudo tzdata locales nano \
+    python3 python3-venv python3-pip \
  && rm -rf /var/lib/apt/lists/*
+
+# Make sure "python" exists for tooling that expects it
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 
 # Locale
 RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1
 
 # Non-root user
 RUN groupadd -g ${GID} ${USERNAME} \
@@ -45,5 +47,4 @@ ENV START_COMFYUI=0 \
     OSTRIS_PORT=3400 \
     JUPYTER_PORT=3600
 
-# tini as PID 1
 ENTRYPOINT ["/usr/bin/tini","-s","--","/scripts/entrypoint.sh"]
