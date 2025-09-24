@@ -7,9 +7,9 @@ ARG USERNAME=comfy
 ARG UID=1000
 ARG GID=1000
 
-# Base OS deps (image build only; never apt inside running pods)
+# Base OS deps (only during image build; never apt inside running pods)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl wget git tini sudo tzdata locales nano \
+    ca-certificates curl wget git tini tzdata locales nano \
     python3 python3-venv python3-pip \
  && rm -rf /var/lib/apt/lists/*
 
@@ -21,11 +21,22 @@ RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1
 
-# Non-root user
-RUN groupadd -g ${GID} ${USERNAME} \
- && useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USERNAME} \
- && usermod -aG sudo ${USERNAME} \
- && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-${USERNAME}
+# Non-root user (idempotent: avoids UID/GID/name collisions)
+RUN set -e; \
+    existing_gid="$(getent group ${GID} | cut -d: -f1 || true)"; \
+    if [ -n "$existing_gid" ] && [ "$existing_gid" != "${USERNAME}" ]; then \
+      groupmod -n "${USERNAME}" "$existing_gid"; \
+    fi; \
+    getent group ${GID} >/dev/null 2>&1 || groupadd -g ${GID} "${USERNAME}"; \
+    if id -u "${USERNAME}" >/dev/null 2>&1; then \
+      usermod -u ${UID} -g ${GID} -s /bin/bash -d /home/${USERNAME} "${USERNAME}"; \
+    else \
+      useradd -m -u ${UID} -g ${GID} -s /bin/bash "${USERNAME}"; \
+    fi; \
+    apt-get update && apt-get install -y --no-install-recommends sudo && rm -rf /var/lib/apt/lists/*; \
+    usermod -aG sudo "${USERNAME}" || true; \
+    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-${USERNAME}; \
+    chmod 0440 /etc/sudoers.d/90-${USERNAME}
 
 # Ports contract
 EXPOSE 3000 3100 3400 3600
