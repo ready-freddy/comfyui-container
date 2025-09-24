@@ -56,4 +56,20 @@ case "${1:-start}" in
   *)     echo "usage: jupyterctl {start|stop|log}"; exit 2;;
 esac
 EOS
-chmod +x /wo
+chmod +x /workspace/bin/jupyterctl
+
+cat >/workspace/bin/ai-toolkitctl <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+VENV=/workspace/.venvs/ai-toolkit
+LOG=/workspace/logs/ai-toolkit.$(date +%Y%m%dT%H%M%S).log
+case "${1:-start}" in
+  start) echo "Ostris not wired yet; pin repo and update me." | tee -a "$LOG";;
+  stop)  pkill -f "ai-toolkit" || true; echo "Ostris stopped.";;
+  log)   tail -n 200 -f "$LOG" ;;
+  *)     echo "usage: ai-toolkitctl {start|stop|log}"; exit 2;;
+esac
+EOS
+chmod +x /workspace/bin/ai-toolkitctl
+
+echo "[bootstrap] done" | tee -a "$LOG"
