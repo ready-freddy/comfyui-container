@@ -1,37 +1,63 @@
-name: build-and-push
+name: Build & Push (CUDA 12.8 + Jupyter safe-boot)
 
 on:
   push:
-    branches: [ main ]
-    paths:
-      - 'Dockerfile'
-      - '.github/workflows/build.yml'
-      - 'scripts/**'
-      - '.dockerignore'
-  workflow_dispatch: {}
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish (e.g., cu128-py312-stable.1)"
+        required: true
+        default: "cu128-py312-stable.1"
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  # Fallback tag if not provided by workflow_dispatch
+  DEFAULT_TAG: cu128-py312-stable.1
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-    env:
-      REGISTRY: ghcr.io
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Debug tree
+      - name: Resolve tag
+        id: tag
         run: |
-          echo "::group::Repository tree"
-          ls -la
-          echo
-          echo "scripts/:"
-          ls -la scripts || true
-          echo "::endgroup::"
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "TAG=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=${DEFAULT_TAG}" >> $GITHUB_OUTPUT
+          fi
+          echo "Using tag: $(cat $GITHUB_OUTPUT | cut -d= -f2)"
+
+      - name: Sanity: Dockerfile has a FROM
+        run: |
+          head -n 20 Dockerfile
+          awk 'NR==1 && $1!="FROM"{print "Dockerfile must start with FROM"; exit 1} END{if(NR<1) exit 1}' Dockerfile
+
+      - name: Validate entrypoint.sh (EOL + syntax)
+        run: |
+          test -f scripts/entrypoint.sh
+          file scripts/entrypoint.sh
+          if file scripts/entrypoint.sh | grep -qi 'CRLF'; then
+            echo "CRLF line endings detected in scripts/entrypoint.sh"; exit 1
+          fi
+          bash -n scripts/entrypoint.sh
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -46,21 +72,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute image ref (lowercase)
-        id: vars
-        run: |
-          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
-          REPO_LC="$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')"
-          echo "ref=${OWNER_LC}/${REPO_LC}:cu128-py312-stable" >> "$GITHUB_OUTPUT"
+      # Optional labels/annotations (nice-to-have)
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.tag.outputs.TAG }}
+          labels: |
+            org.opencontainers.image.title=RunPod ComfyUI Container
+            org.opencontainers.image.description=CUDA 12.8 (Ubuntu 24.04) with hardened entrypoint + Jupyter safe-boot
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Build & Push (cu128 only)
+      - name: Build & Push
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.TAG }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           provenance: false
           sbom: false
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.vars.outputs.ref }}
-          build-args: |
-            CUDA_TAG=12.8.0
+
+      - name: Summary
+        run: |
+          echo "Pushed: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.TAG }}"
