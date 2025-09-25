@@ -1,34 +1,62 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOGDIR=/workspace/logs
-mkdir -p "$LOGDIR" /workspace/scripts /workspace/bin /workspace/.provision
+# ---- Ports (defaults) ----
+COMFY_PORT="${COMFY_PORT:-3000}"
+CODE_SERVER_PORT="${CODE_SERVER_PORT:-3100}"
+JUPYTER_PORT="${JUPYTER_PORT:-3600}"
+OSTRIS_PORT="${OSTRIS_PORT:-3400}"
 
-STAMP="/workspace/.provision/complete-${PROVISION_VERSION:-unknown}"
-if [[ "${AUTOPROVISION:-1}" == "1" ]] && [[ ! -f "$STAMP" ]]; then
-  echo "[entrypoint] provisioning start ${PROVISION_VERSION:-unknown}" | tee -a "$LOGDIR/entrypoint.provision.log"
-  /workspace/scripts/provision_all.sh 2>&1 | tee -a "$LOGDIR/entrypoint.provision.log" || true
+echo "[entrypoint] Ports COMFY:${COMFY_PORT} CODE:${CODE_SERVER_PORT} OSTRIS:${OSTRIS_PORT} JUPY:${JUPYTER_PORT}"
+
+# ---- Debug escape hatch: keep the container alive no matter what ----
+if [[ "${STARTUP_SLEEP_ONLY:-0}" == "1" ]]; then
+  echo "[entrypoint] STARTUP_SLEEP_ONLY=1 → sleeping forever (debug)"
+  exec bash -lc "sleep infinity"
 fi
 
-TS="$(date +%Y%m%dT%H%M%S)"
-touch "$LOGDIR/entrypoint.$TS.log"
-ln -sf "entrypoint.$TS.log" "$LOGDIR/entrypoint.last.log"
+# ---- Small helpers ----
+log() { printf '%s\n' "[entrypoint] $*"; }
+maybe_start() {
+  local flag="$1" name="$2" cmd="$3"
+  if [[ "${flag}" == "1" ]]; then
+    log "start ${name}"
+    # shellcheck disable=SC2086
+    eval ${cmd} || { echo "[entrypoint] ${name} failed" >&2; exit 1; }
+  else
+    log "skip ${name}"
+  fi
+}
 
-echo "[entrypoint] Ports COMFY:${COMFY_PORT:-3000} CODE:${CODE_SERVER_PORT:-3100} OSTRIS:${OSTRIS_PORT:-3400} JUPY:${JUPYTER_PORT:-3600}" | tee -a "$LOGDIR/entrypoint.last.log"
+# ---- Startup flags (defaults: code-server & jupyter ON; comfy OFF) ----
+START_CODE_SERVER="${START_CODE_SERVER:-1}"
+START_JUPYTER="${START_JUPYTER:-1}"
+START_COMFYUI="${START_COMFYUI:-0}"
+START_OSTRIS="${START_OSTRIS:-0}"
 
-# Optional auto-starts (defaults off; manual control is safer)
-if [[ "${START_CODE_SERVER:-0}" == "1" ]]; then
-  nohup /workspace/bin/codesrvctl start > "$LOGDIR/code-server.nohup.log" 2>&1 || true
-fi
-if [[ "${START_JUPYTER:-0}" == "1" ]]; then
-  nohup /workspace/bin/jupyterctl start > "$LOGDIR/jupyter.nohup.log" 2>&1 || true
-fi>
-if [[ "${START_COMFYUI:-0}" == "1" ]]; then
-  nohup /workspace/bin/comfyctl start > "$LOGDIR/comfyui.nohup.log" 2>&1 || true
-fi
-if [[ "${START_OSTRIS:-0}" == "1" ]]; then
-  nohup /workspace/bin/ai-toolkitctl start > "$LOGDIR/ostris.nohup.log" 2>&1 || true
-fi
+# ---- Start services (your launchers are idempotent) ----
+maybe_start "${START_CODE_SERVER}" "code-server" "/workspace/bin/codesrvctl start"
+maybe_start "${START_JUPYTER}"    "jupyter"     "/workspace/bin/jupyterctl start"
+maybe_start "${START_COMFYUI}"    "comfyui"     "/workspace/bin/comfyctl start"
+# maybe_start "${START_OSTRIS}"     "ostris"      "/workspace/bin/ostrisctl start"
 
-# Keep container alive and stream logs
-tail -F "$LOGDIR"/entrypoint.*.log "$LOGDIR"/*.nohup.log "$LOGDIR"/entrypoint.provision.log 2>/dev/null || tail -f /dev/null
+# ---- Lightweight probes (don’t fail container if closed) ----
+probe() {
+  local port="$1"
+  if ss -lnt | grep -q ":${port} "; then
+    curl -sI "http://127.0.0.1:${port}/" | head -n1 || true
+  fi
+}
+probe "${CODE_SERVER_PORT}"
+probe "${JUPYTER_PORT}"
+probe "${COMFY_PORT}"
+probe "${OSTRIS_PORT}"
+
+# ---- Hand control to CMD or stay alive ----
+if [[ $# -gt 0 ]]; then
+  log "exec CMD: $*"
+  exec "$@"
+else
+  log "tailing forever"
+  exec bash -lc "tail -f /dev/null"
+fi
