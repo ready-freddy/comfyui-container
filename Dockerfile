@@ -26,8 +26,6 @@ WORKDIR $WORKSPACE
 
 # ---- Bring in scripts exactly as in repo ----
 COPY scripts/ /scripts/
-COPY entrypoint.sh /scripts/entrypoint.sh
-COPY provision_all.sh /scripts/provision_all.sh
 
 RUN set -eux; \
     find /scripts -type f -name '*.sh' -exec sed -i 's/\r$//' {} \; && \
