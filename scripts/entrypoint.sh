@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ---- Ports (defaults) ----
 COMFY_PORT="${COMFY_PORT:-3000}"
 CODE_SERVER_PORT="${CODE_SERVER_PORT:-3100}"
 JUPYTER_PORT="${JUPYTER_PORT:-3600}"
@@ -25,7 +24,6 @@ maybe_start() {
   fi
 }
 
-# ---- One-time provisioning ----
 STAMP="/workspace/.provision/complete-${PROVISION_VERSION:-unknown}"
 if [[ ! -f "$STAMP" ]]; then
   log "provisioning… version=${PROVISION_VERSION:-unset}"
@@ -34,7 +32,6 @@ else
   log "provision already complete (${STAMP})"
 fi
 
-# ---- Startup flags ----
 START_CODE_SERVER="${START_CODE_SERVER:-1}"
 START_JUPYTER="${START_JUPYTER:-1}"
 START_COMFYUI="${START_COMFYUI:-0}"
