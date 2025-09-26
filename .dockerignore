@@ -1,9 +1,17 @@
+# Git
 .git
 .gitignore
+
+# CI docs
 .github/**/README.md
+
+# Python cache
 **/__pycache__/
 **/*.pyc
-workspace/
-models/
-logs/
-notebooks/
+
+# Exclude only mutable runtime data under workspace
+workspace/models/
+workspace/logs/
+workspace/notebooks/
+
+# Keep workspace/bin and workspace/scripts for build
