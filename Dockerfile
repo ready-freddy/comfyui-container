@@ -8,11 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     WORKSPACE=/workspace \
     PROVISION_VERSION=2025-09-26-v4
 
-# ---- System deps baked into the image (no apt in pods) ----
-# - Python 3.12 + venv + dev headers for wheels
-# - git for Manager
-# - iproute2 for `ss` probes
-# - GL/X shims so libGL.so.1 is always present
+# ---- System deps baked into the image ----
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -28,15 +24,16 @@ RUN set -eux; \
 RUN set -eux; mkdir -p $WORKSPACE/{bin,models,notebooks,logs,ComfyUI,ai-toolkit,.provision,.venvs}
 WORKDIR $WORKSPACE
 
-# ---- Bring in scripts (entrypoint + provisioner) ----
+# ---- Bring in scripts exactly as in repo ----
 COPY scripts/ /scripts/
+COPY entrypoint.sh /scripts/entrypoint.sh
 COPY provision_all.sh /scripts/provision_all.sh
+
 RUN set -eux; \
     find /scripts -type f -name '*.sh' -exec sed -i 's/\r$//' {} \; && \
     bash -n /scripts/entrypoint.sh /scripts/provision_all.sh && \
     chmod +x /scripts/*.sh
 
-# Expose standard ports
 EXPOSE 3000 3100 3400 3600
 
 ENTRYPOINT ["/scripts/entrypoint.sh"]
