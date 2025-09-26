@@ -1,8 +1,15 @@
+# Git
 .git
 .gitignore
+
+# CI docs
 .github/**/README.md
+
+# Python cache
 **/__pycache__/
 **/*.pyc
+
+# Exclude only runtime data under workspace
 workspace/models/
 workspace/logs/
 workspace/notebooks/
