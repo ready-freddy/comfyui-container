@@ -9,7 +9,6 @@ OSTRIS_PORT="${OSTRIS_PORT:-3400}"
 
 echo "[entrypoint] Ports COMFY:${COMFY_PORT} CODE:${CODE_SERVER_PORT} OSTRIS:${OSTRIS_PORT} JUPY:${JUPYTER_PORT}"
 
-# ---- Optional: debug keepalive ----
 if [[ "${STARTUP_SLEEP_ONLY:-0}" == "1" ]]; then
   echo "[entrypoint] STARTUP_SLEEP_ONLY=1 → sleeping forever (debug)"
   exec bash -lc "sleep infinity"
@@ -20,14 +19,13 @@ maybe_start() {
   local flag="$1" name="$2" cmd="$3"
   if [[ "${flag}" == "1" ]]; then
     log "start ${name}"
-    # shellcheck disable=SC2086
     eval ${cmd} || { echo "[entrypoint] ${name} failed" >&2; exit 1; }
   else
     log "skip ${name}"
   fi
 }
 
-# ---- One-time provisioning (idempotent) ----
+# ---- One-time provisioning ----
 STAMP="/workspace/.provision/complete-${PROVISION_VERSION:-unknown}"
 if [[ ! -f "$STAMP" ]]; then
   log "provisioning… version=${PROVISION_VERSION:-unset}"
@@ -36,19 +34,17 @@ else
   log "provision already complete (${STAMP})"
 fi
 
-# ---- Startup flags (code-server & jupyter ON; comfy/ostris OFF) ----
+# ---- Startup flags ----
 START_CODE_SERVER="${START_CODE_SERVER:-1}"
 START_JUPYTER="${START_JUPYTER:-1}"
 START_COMFYUI="${START_COMFYUI:-0}"
 START_OSTRIS="${START_OSTRIS:-0}"
 
-# ---- Start managed services ----
 maybe_start "${START_CODE_SERVER}" "code-server" "/workspace/bin/codesrvctl start"
 maybe_start "${START_JUPYTER}"    "jupyter"     "/workspace/bin/jupyterctl start"
 maybe_start "${START_COMFYUI}"    "comfyui"     "/workspace/bin/comfyctl start"
 # maybe_start "${START_OSTRIS}"     "ostris"      "/workspace/bin/ai-toolkitctl start"
 
-# ---- Lightweight probes (don’t fail container if closed) ----
 probe() {
   local port="$1"
   if command -v ss >/dev/null 2>&1 && ss -lnt | grep -q ":${port} "; then
@@ -60,7 +56,6 @@ probe "${JUPYTER_PORT}"
 probe "${COMFY_PORT}"
 probe "${OSTRIS_PORT}"
 
-# ---- Hand control to CMD or stay alive ----
 if [[ $# -gt 0 ]]; then
   log "exec CMD: $*"
   exec "$@"
