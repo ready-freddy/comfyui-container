@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONUNBUFFERED=1 \
     WORKSPACE=/workspace \
-    PROVISION_VERSION=2025-09-26-v4
+    PROVISION_VERSION=2025-09-27-v4.1
 
 # ---- System deps baked into the image ----
 RUN set -eux; \
