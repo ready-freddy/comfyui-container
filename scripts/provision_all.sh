@@ -21,7 +21,7 @@ ensure_venv () {
 }
 
 COMFY_VENV="$(ensure_venv comfyui-perf)"
-TORCH_SPEC='torch==2.8.0+cu128 torchvision==0.19.0+cu128 torchaudio==2.8.0+cu128 --index-url https://download.pytorch.org/whl/cu128'
+TORCH_SPEC='torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128 --index-url https://download.pytorch.org/whl/cu128'
 "$COMFY_VENV/bin/pip" install $TORCH_SPEC \
   onnx==1.16.2 onnxruntime-gpu==1.18.1 \
   opencv-python-headless==4.11.0.86 \
