@@ -5,15 +5,14 @@ SHELL ["/bin/bash","-lc"]
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONUNBUFFERED=1 \
-    WORKSPACE=/workspace \
-    PROVISION_VERSION=2025-09-27-v4.4
+    WORKSPACE=/workspace
 
-# ---- System deps baked into the image ----
+# ---- Base system (baked; no apt in running pods) ----
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       python3.12 python3.12-venv python3.12-dev python3-pip \
-      ca-certificates curl unzip git iproute2 procps \
+      git curl unzip iproute2 procps ca-certificates \
       libgl1 libglib2.0-0 libsm6 libxext6 libxrender1; \
     rm -rf /var/lib/apt/lists/*; \
     update-ca-certificates; \
@@ -21,20 +20,16 @@ RUN set -eux; \
     ln -sf /usr/bin/pip3 /usr/local/bin/pip
 
 # ---- Workspace skeleton ----
-RUN set -eux; mkdir -p $WORKSPACE/{bin,models,notebooks,logs,ComfyUI,ai-toolkit,.provision,.venvs}
+RUN mkdir -p $WORKSPACE/{bin,models,logs,notebooks,ComfyUI,ai-toolkit,.venvs}
 WORKDIR $WORKSPACE
 
-# ---- Bring in scripts exactly as in repo ----
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    build-essential g++ \
- && rm -rf /var/lib/apt/lists/*
+# ---- Scripts ----
 COPY scripts/ /scripts/
-
 RUN set -eux; \
     find /scripts -type f -name '*.sh' -exec sed -i 's/\r$//' {} \; && \
-    bash -n /scripts/entrypoint.sh /scripts/provision_all.sh && \
     chmod +x /scripts/*.sh
 
+# Ports: Comfy 3000 (manual), code-server 3100, Ostris 3400, Jupyter 3600
 EXPOSE 3000 3100 3400 3600
 
 ENTRYPOINT ["/scripts/entrypoint.sh"]
