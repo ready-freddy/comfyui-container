@@ -1,48 +1,49 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
-COMFY_PORT="${COMFY_PORT:-3000}"
-CODE_SERVER_PORT="${CODE_SERVER_PORT:-3100}"
-JUPYTER_PORT="${JUPYTER_PORT:-3600}"
-OSTRIS_PORT="${OSTRIS_PORT:-3400}"
+LOG_DIR=/workspace/logs
+mkdir -p "$LOG_DIR"
 
-log() { printf '%s\n' "[entrypoint] $*"; }
+echo "[entrypoint] starting; $(date -Iseconds)"
 
-# Always run provisioner (idempotent). No stamps, no deadlocks.
-log "running provisioner..."
-/scripts/provision_all.sh || { echo "[entrypoint] provision failed" >&2; exit 1; }
+# 1) Always run provision, but DO NOT kill the container if it fails
+if /scripts/provision_all.sh; then
+  echo "[entrypoint] provision succeeded"
+else
+  echo "[entrypoint] WARNING: provision failed (soft-fail). Check logs under /workspace/logs."
+fi
 
-START_CODE_SERVER="${START_CODE_SERVER:-1}"
-START_JUPYTER="${START_JUPYTER:-1}"
-START_COMFYUI="${START_COMFYUI:-0}"
-START_OSTRIS="${START_OSTRIS:-0}"
+# 2) Optional "sleep only" to keep the pod alive for debugging
+if [[ "${STARTUP_SLEEP_ONLY:-0}" == "1" ]]; then
+  echo "[entrypoint] STARTUP_SLEEP_ONLY=1 → sleeping forever for inspection"
+  tail -f /dev/null
+fi
 
-maybe_start() {
-  local flag="$1" name="$2" cmd="$3"
-  if [[ "$flag" == "1" ]]; then
-    log "start $name"
-    eval "$cmd" || { echo "[entrypoint] $name failed" >&2; exit 1; }
-  else
-    log "skip $name"
-  fi
-}
+# 3) Start code-server (baked binary) — no auth by default; binds workspace
+if [[ "${START_CODE_SERVER:-1}" == "1" ]]; then
+  LOG_CS="$LOG_DIR/code-server.$(date +%Y%m%dT%H%M%S).log"
+  echo "[entrypoint] launching code-server → :${CODE_SERVER_PORT} (log: $LOG_CS)"
+  nohup code-server --bind-addr 0.0.0.0:${CODE_SERVER_PORT} --auth none /workspace >>"$LOG_CS" 2>&1 &
+fi
 
-maybe_start "$START_CODE_SERVER" "code-server" "/workspace/bin/codesrvctl start"
-maybe_start "$START_JUPYTER"    "jupyter"     "/workspace/bin/jupyterctl start"
-maybe_start "$START_COMFYUI"    "comfyui"     "/workspace/bin/comfyctl start"
-maybe_start "$START_OSTRIS"     "ostris"      "/workspace/bin/ai-toolkitctl start"
+# 4) Start Jupyter in its own venv (idempotent)
+if [[ "${START_JUPYTER:-1}" == "1" ]]; then
+  LOG_J="$LOG_DIR/jupyter.$(date +%Y%m%dT%H%M%S).log"
+  JVENV=/workspace/.venvs/jupyter
+  [[ -d "$JVENV" ]] || (python3 -m venv "$JVENV" && "$JVENV/bin/pip" install -U pip wheel setuptools jupyterlab)
+  echo "[entrypoint] launching Jupyter → :${JUPYTER_PORT} (log: $LOG_J)"
+  nohup "$JVENV/bin/jupyter" lab \
+      --ip=0.0.0.0 --port="${JUPYTER_PORT}" --no-browser --ServerApp.token="${JUPYTER_TOKEN:-}" \
+      --ServerApp.allow_origin='*' >>"$LOG_J" 2>&1 &
+fi
 
-# lightweight probes (won't fail the container)
-probe() {
-  local port="$1"
-  if command -v ss >/dev/null 2>&1 && ss -lnt | grep -q ":${port} "; then
-    curl -sI "http://127.0.0.1:${port}/" | head -n1 || true
-  fi
-}
-probe "${CODE_SERVER_PORT}"
-probe "${JUPYTER_PORT}"
-probe "${COMFY_PORT}"
-probe "${OSTRIS_PORT}"
+# 5) ComfyUI is manual-only by policy; allow opt-in
+if [[ "${START_COMFYUI:-0}" == "1" ]]; then
+  echo "[entrypoint] START_COMFYUI=1 → starting ComfyUI (policy exception)"
+  /workspace/bin/comfyctl start || true
+fi
 
-log "container ready; tailing forever"
-exec tail -f /dev/null
+# 6) Keep PID 1 alive and mirror latest logs to STDOUT
+echo "[entrypoint] services started; tailing logs"
+touch "$LOG_DIR/.sentinel"
+exec tail -n +1 -F "$LOG_DIR/"*.log "$LOG_DIR/.sentinel"
