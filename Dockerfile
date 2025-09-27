@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONUNBUFFERED=1 \
     WORKSPACE=/workspace \
-    PROVISION_VERSION=2025-09-27-v4.3
+    PROVISION_VERSION=2025-09-27-v4.4
 
 # ---- System deps baked into the image ----
 RUN set -eux; \
@@ -25,6 +25,9 @@ RUN set -eux; mkdir -p $WORKSPACE/{bin,models,notebooks,logs,ComfyUI,ai-toolkit,
 WORKDIR $WORKSPACE
 
 # ---- Bring in scripts exactly as in repo ----
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    build-essential g++ \
+ && rm -rf /var/lib/apt/lists/*
 COPY scripts/ /scripts/
 
 RUN set -eux; \
