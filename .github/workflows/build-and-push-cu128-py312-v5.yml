@@ -1,4 +1,4 @@
-name: build-and-push-cu128-py312-v4
+name: build-and-push-cu128-py312-v5
 
 on:
   workflow_dispatch:
@@ -6,15 +6,13 @@ on:
       tag:
         description: "Image tag"
         required: true
-        default: "cu128-py312-v4"
+        default: "cu128-py312-v5"
   push:
     branches: [ "main" ]
     paths:
       - "Dockerfile"
       - "scripts/**"
-      - "entrypoint.sh"
-      - "provision_all.sh"
-      - ".github/workflows/build-and-push-cu128-py312-v4.yml"
+      - ".github/workflows/build-and-push-cu128-py312-v5.yml"
 
 permissions:
   contents: read
@@ -42,7 +40,7 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.event.inputs.tag || 'cu128-py312-v4' }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.event.inputs.tag || 'cu128-py312-v5' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
