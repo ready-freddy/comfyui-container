@@ -29,8 +29,8 @@ echo "[provision] install torch stack (CUDA 12.8)"
   "torch==2.8.0+cu128" "torchvision==0.23.0+cu128" "torchaudio==2.8.0+cu128" \
   --extra-index-url https://download.pytorch.org/whl/cu128
 
-# --- Core libs (ABI-safe) + HF pins ---
-echo "[provision] install core libs and HF pins"
+# Core libs (ABI-safe) + HF pins
+echo "[provision] core libs"
 "$CVENV/bin/pip" install -U \
   "numpy<2" \
   "onnx==1.17.0" \
@@ -41,14 +41,18 @@ echo "[provision] install core libs and HF pins"
   "transformers==4.56.2" \
   "tokenizers==0.22.1"
 
+
 # Ensure GUI cv2 is NOT present (some nodes try to pull it)
 "$CVENV/bin/pip" uninstall -y opencv-python || true
 
-# --- ComfyUI repo (disposable) ---
-if [[ ! -d /workspace/ComfyUI/.git ]]; then
-  echo "[provision] clone ComfyUI"
-  git clone --depth=1 https://github.com/comfyanonymous/ComfyUI /workspace/ComfyUI
+if [[ -d /workspace/ComfyUI/.git ]]; then
+  echo "[provision] ComfyUI repo present — skip clone"
+elif [[ -f /workspace/ComfyUI/main.py ]]; then
+  echo "[provision] ComfyUI code present (non-git) — skip clone"
+else
+  git clone --depth=1 https://github.com/comfyanonymous/ComfyUI /workspace/ComfyUI || true
 fi
+
 
 # --- comfyctl helper (ComfyUI stays manual-only) ---
 BIN=/workspace/bin
