@@ -7,7 +7,7 @@ LOG_FILE="$LOG_DIR/provision.$(date +%Y%m%dT%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "[provision] begin $(date -Iseconds)"
 
-# Diagnostics: allow a clean skip
+# Respect SKIP_PROVISION (diagnostics mode)
 if [[ "${SKIP_PROVISION:-0}" == "1" ]]; then
   echo "[provision] SKIP_PROVISION=1 → skipping provision safely"
   exit 0
@@ -20,7 +20,6 @@ if command -v flock >/dev/null 2>&1; then
   exec 9> "$LOCKFILE"
   flock -w 120 9 || { echo "[provision] ERROR: lock timeout"; exit 1; }
 else
-  # poor-man's lock fallback
   for i in $(seq 1 120); do
     mkdir "$LOCKFILE".d 2>/dev/null && break || sleep 1
   done
@@ -49,7 +48,8 @@ echo "[provision] install core libs"
   "insightface==0.7.3" \
   "protobuf>=4.25.1" \
   "transformers==4.56.2" \
-  "tokenizers==0.22.1"
+  "tokenizers==0.22.1" \
+  "tqdm" "pyyaml"
 
 # Ensure GUI cv2 is not present
 "$CVENV/bin/pip" uninstall -y opencv-python || true
@@ -69,7 +69,6 @@ ensure_repo () {
       if [[ -n "$CURR" ]] && git -C "$REPO_DIR" rev-parse --verify "origin/$CURR" >/dev/null 2>&1; then
         git -C "$REPO_DIR" reset --hard "origin/$CURR"
       else
-        # try main/master
         git -C "$REPO_DIR" reset --hard origin/main || git -C "$REPO_DIR" reset --hard origin/master
       fi
       return 0
@@ -100,11 +99,15 @@ install -d /workspace/bin
 cat >/workspace/bin/comfyctl <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+unset PYTHONPATH
+export PATH="/workspace/.venvs/comfyui-perf/bin:$PATH"
 export GIT_PYTHON_GIT_EXECUTABLE=/usr/bin/git
 export GIT_PYTHON_REFRESH=quiet
+
 PY=/workspace/.venvs/comfyui-perf/bin/python
 LOG=/workspace/logs/comfyui.$(date +%Y%m%dT%H%M%S).log
 CMD="$PY -u /workspace/ComfyUI/main.py --listen 0.0.0.0 --port ${COMFY_PORT:-3000}"
+
 case "${1:-start}" in
   start)
     pkill -f "python.*ComfyUI/main.py" || true
@@ -114,9 +117,13 @@ case "${1:-start}" in
       sleep 1
     done
     echo "NOT READY (timeout)"; exit 1;;
-  stop) pkill -f "python.*ComfyUI/main.py" || true; echo STOPPED;;
-  restart) "$0" stop; "$0" start;;
-  *) echo "Usage: comfyctl {start|stop|restart}"; exit 2;;
+  stop)
+    pkill -f "python.*ComfyUI/main.py" || true
+    echo STOPPED;;
+  restart)
+    "$0" stop; "$0" start;;
+  *)
+    echo "Usage: comfyctl {start|stop|restart}"; exit 2;;
 esac
 EOF
 chmod +x /workspace/bin/comfyctl
