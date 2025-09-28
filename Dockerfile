@@ -114,12 +114,18 @@ echo "[provision] torch stack"
   "torch==2.8.0+cu128" "torchvision==0.23.0+cu128" "torchaudio==2.8.0+cu128" \
   --extra-index-url https://download.pytorch.org/whl/cu128
 
-# Core libs (ABI-safe) and vision
+# Core libs (ABI-safe) + HF pins
 echo "[provision] core libs"
 "$CVENV/bin/pip" install -U \
-  "numpy<2" "onnx==1.16.2" "onnxruntime-gpu==1.18.1" \
-  "opencv-python-headless==4.11.0.86" "insightface==0.7.3" \
-  "protobuf>=4.25.1" "transformers==4.56.2" "tokenizers==0.23.0"
+  "numpy<2" \
+  "onnx==1.17.0" \
+  "onnxruntime-gpu==1.18.1" \
+  "opencv-python-headless==4.11.0.86" \
+  "insightface==0.7.3" \
+  "protobuf>=4.25.1" \
+  "transformers==4.56.2" \
+  "tokenizers==0.22.1"
+
 
 # Ensure GUI cv2 not present
 "$CVENV/bin/pip" uninstall -y opencv-python || true
