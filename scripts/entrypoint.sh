@@ -1,60 +1,48 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 
-LOG_DIR=/workspace/logs
-mkdir -p "$LOG_DIR"
-echo "[entrypoint] $(date -Iseconds)"
+LOG_DIR=/workspace/logs; mkdir -p "$LOG_DIR"
+SRC_VENV=/opt/venvs/comfyui-perf
+VENV=/workspace/.venvs/comfyui-perf
 
-# 0) Emergency: do nothing, keep container alive for forensics
-if [[ "${SAFE_START:-0}" == "1" ]]; then
-  echo "[entrypoint] SAFE_START=1 → skipping provision + sidecars"
-  exec tail -f /dev/null
+if [ ! -x "$VENV/bin/python" ]; then
+  mkdir -p "$(dirname "$VENV")"
+  cp -a "$SRC_VENV" "$VENV"
 fi
 
-# 1) Provision phase (soft-fail), unless explicitly skipped
-if [[ "${SKIP_PROVISION:-0}" == "1" ]]; then
-  echo "[entrypoint] SKIP_PROVISION=1 → not running provision"
-else
-  if /scripts/provision_all.sh; then
-    echo "[entrypoint] provision OK"
-  else
-    echo "[entrypoint] WARNING: provision failed (soft-fail). See /workspace/logs."
-  fi
+/scripts/provision_all.sh || true
+
+if [ -x "$VENV/bin/python" ]; then
+  "$VENV/bin/python" - <<'PY' | tee -a "$LOG_DIR/sanity.$(date +%Y%m%dT%H%M%S).log"
+import sys, cv2, torch, onnxruntime
+print(sys.executable)
+print(torch.__version__, torch.cuda.is_available())
+print(getattr(cv2,'__file__','n/a'))
+print(onnxruntime.__version__)
+PY
 fi
 
-# 2) Optional sleep-only to keep pod alive for debugging after provision
-if [[ "${STARTUP_SLEEP_ONLY:-0}" == "1" ]]; then
-  echo "[entrypoint] STARTUP_SLEEP_ONLY=1 → sleeping"
-  exec tail -f /dev/null
+if [ "${START_CODE_SERVER:-1}" = "1" ]; then
+  mkdir -p /root/.config/code-server
+  cat > /root/.config/code-server/config.yaml <<YML
+bind-addr: 0.0.0.0:${CODE_SERVER_PORT:-3100}
+auth: password
+password: ${PASSWORD:-changeme}
+cert: false
+YML
+  (code-server --log debug --disable-telemetry /workspace >/workspace/logs/code-server.log 2>&1 &)
 fi
 
-# 3) Sidecars (ComfyUI stays manual-only by policy)
-if [[ "${START_CODE_SERVER:-1}" == "1" ]]; then
-  LOG_CS="$LOG_DIR/code-server.$(date +%Y%m%dT%H%M%S).log"
-  echo "[entrypoint] launching code-server → :${CODE_SERVER_PORT:-3100} (log: $LOG_CS)"
-  nohup code-server --bind-addr 0.0.0.0:${CODE_SERVER_PORT:-3100} --auth none /workspace >>"$LOG_CS" 2>&1 &
+if [ "${START_COMFYUI:-0}" = "1" ]; then /workspace/bin/comfyctl start || true; fi
+if [ "${START_JUPYTER:-0}" = "1" ]; then
+  . "$VENV/bin/activate"
+  jupyter lab --no-browser --NotebookApp.token="${JUPYTER_TOKEN:-changeme}" \
+    --ServerApp.port="${JUPYTER_PORT:-3600}" --ServerApp.ip=0.0.0.0 \
+    >/workspace/logs/jupyter.log 2>&1 &
+  deactivate || true
 fi
+if [ "${START_OSTRIS:-0}" = "1" ]; then /workspace/bin/aikitctl || true; fi
+if [ "${START_OSTRISDASH:-0}" = "1" ]; then /workspace/bin/aikituictl || true; fi
 
-if [[ "${START_JUPYTER:-0}" == "1" ]]; then
-  LOG_J="$LOG_DIR/jupyter.$(date +%Y%m%dT%H%M%S).log"
-  JVENV=/workspace/.venvs/jupyter
-  if [[ ! -d "$JVENV" ]]; then
-    python3 -m venv "$JVENV"
-    "$JVENV/bin/pip" install -U pip wheel setuptools jupyterlab
-  fi
-  echo "[entrypoint] launching Jupyter → :${JUPYTER_PORT:-3600} (log: $LOG_J)"
-  nohup "$JVENV/bin/jupyter" lab \
-      --ip=0.0.0.0 --port="${JUPYTER_PORT:-3600}" --no-browser \
-      --ServerApp.token="${JUPYTER_TOKEN:-}" \
-      --ServerApp.allow_origin='*' >>"$LOG_J" 2>&1 &
-fi
-
-# Optional policy exception: allow ComfyUI autostart when explicitly requested
-if [[ "${START_COMFYUI:-0}" == "1" ]]; then
-  echo "[entrypoint] START_COMFYUI=1 → starting ComfyUI (policy exception)"
-  /workspace/bin/comfyctl start || true
-fi
-
-# 4) Keep PID 1 alive and stream logs
-touch "$LOG_DIR/.sentinel"
-exec tail -n +1 -F "$LOG_DIR/"*.log "$LOG_DIR/.sentinel"
+exec tail -f /dev/null
