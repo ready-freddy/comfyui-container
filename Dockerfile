@@ -49,10 +49,12 @@ ENV COMFY_PORT=3000 \
     SKIP_PROVISION=0 \
     SAFE_START=0
 
-# --- Bring your scripts (real .sh files in repo root) ---
-COPY entrypoint.sh    /scripts/entrypoint.sh
-COPY provision_all.sh /scripts/provision_all.sh
+
+# correct (your files are under scripts/):
+COPY scripts/entrypoint.sh    /scripts/entrypoint.sh
+COPY scripts/provision_all.sh /scripts/provision_all.sh
 RUN set -eux; sed -i 's/\r$//' /scripts/*.sh; chmod +x /scripts/*.sh
+
 
 # --- Provenance ---
 LABEL org.opencontainers.image.version="${IMAGE_VERSION}"
