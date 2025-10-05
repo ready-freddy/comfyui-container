@@ -20,7 +20,7 @@ if [ ! -d "$WORKSPACE/ComfyUI/.git" ]; then
   git clone --depth=1 https://github.com/comfyanonymous/ComfyUI.git "$WORKSPACE/ComfyUI"
 fi
 
-# Minimal provision sanity
+# Minimal provision sanity (no GPU required)
 bash /opt/provision_all.sh || true
 
 # Start code-server only (manual ComfyUI)
