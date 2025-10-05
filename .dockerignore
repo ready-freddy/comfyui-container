@@ -1,11 +1,8 @@
 .git
-.gitignore
-.github/**/README.md
-
-**/__pycache__/
-**/*.pyc
-
-# Keep scripts + sh files in context; only ignore bulky runtime data
-workspace/models/
-workspace/logs/
-workspace/notebooks/
+__pycache__/
+*.pyc
+/workspace/models/*
+/workspace/logs/*
+/workspace/.venvs/*
+/workspace/.locks/*
+/workspace/ComfyUI/*
