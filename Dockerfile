@@ -12,7 +12,7 @@ ARG TA_VERSION=2.8.0
 ARG ORT_VERSION=1.18.1
 ARG OPENCV_VERSION=4.11.0.86
 
-# Make pip installs more reliable
+# Pip behavior: reliable + quiet
 ENV PIP_DEFAULT_TIMEOUT=120 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
@@ -56,15 +56,24 @@ ENV VENV_DIR=/opt/venvs/comfyui-perf \
 
 RUN set -eux; \
   python3 -m venv "${VENV_DIR}"; \
-  "${VENV_DIR}/bin/python" -m pip install --upgrade --retry 5 --timeout 120 pip wheel setuptools "packaging<25"; \
-  # Torch stack via cu128 index; explicit +cu128 for TV/TA to avoid 404
-  "${VENV_DIR}/bin/pip" install --prefer-binary --retry 5 --timeout 120 \
-    --index-url "https://download.pytorch.org/whl/${TORCH_CUDA}" \
-    "torch==${TORCH_VERSION}" \
-    "torchvision==${TV_VERSION}+${TORCH_CUDA}" \
-    "torchaudio==${TA_VERSION}+${TORCH_CUDA}"; \
-  # Back to default index for the rest (drop 'onnx' to avoid source build on py3.12)
-  "${VENV_DIR}/bin/pip" install --prefer-binary --retry 5 --timeout 120 \
+  "${VENV_DIR}/bin/python" -m pip install --upgrade --timeout 120 pip wheel setuptools "packaging<25"; \
+  # Torch stack via cu128 index; first try explicit +cu128 builds, then retry fallback without suffix if needed
+  ( \
+    "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 120 \
+      --extra-index-url "https://download.pytorch.org/whl/${TORCH_CUDA}" \
+      "torch==${TORCH_VERSION}" \
+      "torchvision==${TV_VERSION}+${TORCH_CUDA}" \
+      "torchaudio==${TA_VERSION}+${TORCH_CUDA}" \
+  ) || ( \
+    echo "Retrying Torch stack without +${TORCH_CUDA} suffix from cu128 index..."; \
+    "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 120 \
+      --index-url "https://download.pytorch.org/whl/${TORCH_CUDA}" \
+      "torch==${TORCH_VERSION}" \
+      "torchvision==${TV_VERSION}" \
+      "torchaudio==${TA_VERSION}" \
+  ); \
+  # Back to default index for the rest
+  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 120 \
     "onnxruntime-gpu==${ORT_VERSION}" \
     "opencv-python-headless==${OPENCV_VERSION}" \
     "fastapi" "uvicorn" "pydantic" "tqdm" "pillow" "requests"
