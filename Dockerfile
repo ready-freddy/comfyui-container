@@ -1,71 +1,89 @@
-# syntax=docker/dockerfile:1.6
+# syntax=docker/dockerfile:1.7
 FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 
-ENV DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
-    COMFY_PORT=3000 CODE_SERVER_PORT=3100 JUPYTER_PORT=3600 \
-    OSTRIS_PORT=7860 OSTRISDASH_PORT=8675 \
-    START_CODE_SERVER=1 START_COMFYUI=0 START_JUPYTER=0 START_OSTRIS=0 START_OSTRISDASH=0 \
-    PASSWORD=changeme JUPYTER_TOKEN=changeme \
-    PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
+ARG DEBIAN_FRONTEND=noninteractive
+ARG PYTHON_VERSION=3.12
+ARG NODE_VERSION=v20.18.0
+ARG CODESERVER_VERSION=4.92.2
+ARG TORCH_CUDA=cu128
+ARG TORCH_VERSION=2.8.0
+ARG TV_VERSION=0.20.0
+ARG TA_VERSION=2.8.0
+ARG ORT_VERSION=1.18.1
+ARG OPENCV_VERSION=4.11.0.86
 
-EXPOSE 3000 3100 3600 7860 8675
+# ---------- OS deps (build time only; never apt inside running pods) ----------
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+    ca-certificates curl wget git jq tini \
+    build-essential pkg-config \
+    libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
+    ffmpeg \
+    python3 python3-dev python3-venv python3-distutils; \
+  rm -rf /var/lib/apt/lists/*
 
-# ---- system deps
-RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt/lists \
-    set -eux; apt-get update; apt-get install -y --no-install-recommends \
-    ca-certificates curl git wget build-essential g++ make ninja-build cmake pkg-config \
-    python3 python3-dev python3-venv python3-pip \
-    libglib2.0-0 libglib2.0-dev libgl1-mesa-dev libxext6 libsm6 \
-    libopencv-core-dev libopencv-imgproc-dev libopencv-highgui-dev libopencv-videoio-dev \
-    libopenblas-dev libomp-dev openssl unzip xz-utils; \
-    rm -rf /var/lib/apt/lists/*
-
-# ---- Node 20
-ARG NODE_VERSION=20.18.0
+# ---------- Node (pinned tarball) ----------
 RUN set -eux; \
   cd /tmp; \
-  arch=$(uname -m); case "$arch" in x86_64) A=x64 ;; aarch64) A=arm64 ;; *) echo "Unsupported $arch"; exit 1 ;; esac; \
-  curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${A}.tar.xz -o node.tar.xz; \
-  mkdir -p /usr/local/lib/nodejs; \
-  tar -xJf node.tar.xz -C /usr/local/lib/nodejs; \
-  NODE_DIR=/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-${A}/bin; \
-  ln -sf "${NODE_DIR}/node" /usr/local/bin/node; \
-  ln -sf "${NODE_DIR}/npm"  /usr/local/bin/npm; \
-  ln -sf "${NODE_DIR}/npx"  /usr/local/bin/npx; \
-  /usr/local/bin/node -v && /usr/local/bin/npm -v
+  arch="$(dpkg --print-architecture)"; \
+  case "$arch" in amd64) NODE_ARCH=x64 ;; arm64) NODE_ARCH=arm64 ;; *) echo "Unsupported arch: $arch"; exit 1 ;; esac; \
+  NODE_TGZ="node-${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz"; \
+  curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${NODE_TGZ}" -o "${NODE_TGZ}"; \
+  tar -xJf "${NODE_TGZ}" -C /usr/local --strip-components=1; \
+  node -v && npm -v
 
-# ---- code-server
-ARG CODE_SERVER_VERSION=4.92.2
+# ---------- code-server (pinned tarball) ----------
 RUN set -eux; \
-  arch=$(uname -m); case "$arch" in x86_64) CS=amd64 ;; aarch64) CS=arm64 ;; *) echo "Unsupported $arch"; exit 1 ;; esac; \
-  curl -fsSL -o /tmp/code-server.deb https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_${CS}.deb; \
-  apt-get update; apt-get install -y /tmp/code-server.deb; \
-  rm -rf /var/lib/apt/lists/* /tmp/code-server.deb
+  cd /opt; \
+  arch="$(dpkg --print-architecture)"; \
+  case "$arch" in amd64) CS_ARCH=amd64 ;; arm64) CS_ARCH=arm64 ;; *) echo "Unsupported arch: $arch"; exit 1 ;; esac; \
+  CS_TGZ="code-server-${CODESERVER_VERSION}-linux-${CS_ARCH}.tar.gz"; \
+  curl -fsSL "https://github.com/coder/code-server/releases/download/v${CODESERVER_VERSION}/${CS_TGZ}" -o "${CS_TGZ}"; \
+  tar -xzf "${CS_TGZ}"; \
+  ln -sfn "/opt/code-server-${CODESERVER_VERSION}-linux-${CS_ARCH}/bin/code-server" /usr/local/bin/code-server; \
+  code-server --version
 
-# ---- layout
-RUN set -eux; mkdir -p /workspace /workspace/logs /workspace/.locks /workspace/bin /scripts /opt/venvs; chmod -R 777 /workspace
+# ---------- Python venv (baked seed) ----------
+ENV VENV_DIR=/opt/venvs/comfyui-perf \
+    PERSIST_VENV=/workspace/.venvs/comfyui-perf \
+    PATH="/opt/venvs/comfyui-perf/bin:/usr/local/bin:/usr/bin:/bin"
 
-# ---- Python + CUDA stack
-ARG TORCH_VERSION=2.8.0 TORCH_CUDA=cu128 ORT_VERSION=1.18.1 OPENCV_VERSION=4.11.0.86
 RUN set -eux; \
-    python3 -m venv /opt/venvs/comfyui-perf; \
-    . /opt/venvs/comfyui-perf/bin/activate; \
-    python -m pip install --upgrade pip wheel setuptools; \
-    pip install --index-url https://download.pytorch.org/whl/${TORCH_CUDA} \
-      torch==${TORCH_VERSION} torchvision==0.20.0+${TORCH_CUDA} torchaudio==2.8.0+${TORCH_CUDA}; \
-    pip install onnx onnxruntime-gpu==${ORT_VERSION} \
-      opencv-python-headless==${OPENCV_VERSION} fastapi uvicorn pydantic tqdm pillow; \
-    python - <<'PY'
-import torch, sys
-print("Torch", torch.__version__, "CUDA?", torch.cuda.is_available())
-print("Python", sys.version)
+  python3 -m venv "${VENV_DIR}"; \
+  "${VENV_DIR}/bin/python" -m pip install --upgrade pip wheel setuptools; \
+  "${VENV_DIR}/bin/pip" install --index-url "https://download.pytorch.org/whl/${TORCH_CUDA}" \
+    "torch==${TORCH_VERSION}" "torchvision==${TV_VERSION}+${TORCH_CUDA}" "torchaudio==${TA_VERSION}+${TORCH_CUDA}"; \
+  "${VENV_DIR}/bin/pip" install \
+    "onnx" "onnxruntime-gpu==${ORT_VERSION}" \
+    "opencv-python-headless==${OPENCV_VERSION}" \
+    "fastapi" "uvicorn" "pydantic" "tqdm" "pillow" "requests"; \
+  "${VENV_DIR}/bin/python" - <<'PY'
+import torch, onnxruntime as ort, cv2
+print("Torch", torch.__version__, "CUDA:", torch.version.cuda, "avail:", torch.cuda.is_available())
+print("ORT", ort.__version__)
+print("OpenCV", cv2.__version__)
 PY
 
-# ---- scripts
-COPY scripts/provision_all.sh /scripts/provision_all.sh
-COPY scripts/entrypoint.sh    /scripts/entrypoint.sh
-RUN set -eux; sed -i 's/\r$//' /scripts/*.sh; chmod +x /scripts/*.sh
+# ---------- App skeleton & ports ----------
+ENV WORKSPACE=/workspace \
+    COMFY_PORT=3000 \
+    CODE_SERVER_PORT=3100 \
+    JUPYTER_PORT=3600
+
+RUN set -eux; \
+  mkdir -p ${WORKSPACE}/bin ${WORKSPACE}/models ${WORKSPACE}/logs ${WORKSPACE}/.locks ${WORKSPACE}/.venvs
+
+# ---------- Minimal scripts ----------
+COPY scripts/comfyctl         /workspace/bin/comfyctl
+COPY scripts/provision_all.sh /opt/provision_all.sh
+COPY scripts/entrypoint.sh    /entrypoint.sh
+RUN chmod +x /workspace/bin/comfyctl /opt/provision_all.sh /entrypoint.sh
 
 WORKDIR /workspace
-ENTRYPOINT ["/scripts/entrypoint.sh"]
-CMD [""]
+EXPOSE 3000 3100 3600
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=20 \
+  CMD curl -fsS "http://127.0.0.1:${CODE_SERVER_PORT}/" >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/bin/tini","--","/entrypoint.sh"]
+CMD []
