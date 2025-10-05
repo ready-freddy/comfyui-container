@@ -52,18 +52,14 @@ ENV VENV_DIR=/opt/venvs/comfyui-perf \
 RUN set -eux; \
   python3 -m venv "${VENV_DIR}"; \
   "${VENV_DIR}/bin/python" -m pip install --upgrade pip wheel setuptools; \
+  # Torch stack from cu128 index (no +suffix needed; index provides the correct wheels)
   "${VENV_DIR}/bin/pip" install --index-url "https://download.pytorch.org/whl/${TORCH_CUDA}" \
-    "torch==${TORCH_VERSION}" "torchvision==${TV_VERSION}+${TORCH_CUDA}" "torchaudio==${TA_VERSION}+${TORCH_CUDA}"; \
+    "torch==${TORCH_VERSION}" "torchvision==${TV_VERSION}" "torchaudio==${TA_VERSION}"; \
+  # Back to default index for the rest
   "${VENV_DIR}/bin/pip" install \
     "onnx" "onnxruntime-gpu==${ORT_VERSION}" \
     "opencv-python-headless==${OPENCV_VERSION}" \
-    "fastapi" "uvicorn" "pydantic" "tqdm" "pillow" "requests"; \
-  "${VENV_DIR}/bin/python" - <<'PY'
-import torch, onnxruntime as ort, cv2
-print("Torch", torch.__version__, "CUDA:", torch.version.cuda, "avail:", torch.cuda.is_available())
-print("ORT", ort.__version__)
-print("OpenCV", cv2.__version__)
-PY
+    "fastapi" "uvicorn" "pydantic" "tqdm" "pillow" "requests"
 
 # ---------- App skeleton & ports ----------
 ENV WORKSPACE=/workspace \
