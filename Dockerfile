@@ -2,22 +2,22 @@
 FROM --platform=linux/amd64 nvidia/cuda:12.8.0-devel-ubuntu24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.12
 ARG NODE_VERSION=v20.18.0
 ARG CODESERVER_VERSION=4.92.2
-ARG TORCH_CUDA=cu128
+
+# Versions aligned for CUDA 12.8 + Torch 2.8.0
 ARG TORCH_VERSION=2.8.0
-ARG TV_VERSION=0.20.0
+ARG TV_VERSION=0.23.0
 ARG TA_VERSION=2.8.0
+ARG TRITON_VERSION=3.4.0
 ARG ORT_VERSION=1.18.1
 ARG OPENCV_VERSION=4.11.0.86
 
-# Pip behavior: reliable
 ENV PIP_DEFAULT_TIMEOUT=120 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
-# ---------- OS deps (build time only; never apt inside running pods) ----------
+# ---------- OS deps (build-time only; never apt inside running pods) ----------
 RUN set -eux; \
   apt-get update; \
   apt-get install -y --no-install-recommends \
@@ -56,30 +56,20 @@ ENV VENV_DIR=/opt/venvs/comfyui-perf \
 
 RUN set -eux; \
   python3 -m venv "${VENV_DIR}"; \
-  "${VENV_DIR}/bin/python" -m pip install --upgrade --timeout 120 pip wheel setuptools "packaging<25"
+  "${VENV_DIR}/bin/python" -m pip install --upgrade --timeout 180 pip wheel setuptools "packaging<25"
 
-# Torch stack via cu128 index — install in distinct steps for clear diagnostics
+# Torch 2.8.0 stack from cu128_full, then Triton
 RUN set -eux; \
-  echo ">>> Installing torch==${TORCH_VERSION} from cu128 index"; \
-  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 120 \
-    --index-url "https://download.pytorch.org/whl/${TORCH_CUDA}" \
-    "torch==${TORCH_VERSION}"
-
-RUN set -eux; \
-  echo ">>> Installing torchvision==${TV_VERSION}+${TORCH_CUDA} from cu128 index"; \
-  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 120 \
-    --index-url "https://download.pytorch.org/whl/${TORCH_CUDA}" \
-    "torchvision==${TV_VERSION}+${TORCH_CUDA}"
-
-RUN set -eux; \
-  echo ">>> Installing torchaudio==${TA_VERSION}+${TORCH_CUDA} from cu128 index"; \
-  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 120 \
-    --index-url "https://download.pytorch.org/whl/${TORCH_CUDA}" \
-    "torchaudio==${TA_VERSION}+${TORCH_CUDA}"
+  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 180 \
+    --index-url "https://download.pytorch.org/whl/cu128_full" \
+    "torch==${TORCH_VERSION}" "torchvision==${TV_VERSION}" "torchaudio==${TA_VERSION}"; \
+  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 180 \
+    --index-url "https://download.pytorch.org/whl" \
+    "triton==${TRITON_VERSION}"
 
 # Back to default index for the rest
 RUN set -eux; \
-  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 120 \
+  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 180 \
     "onnxruntime-gpu==${ORT_VERSION}" \
     "opencv-python-headless==${OPENCV_VERSION}" \
     "fastapi" "uvicorn" "pydantic" "tqdm" "pillow" "requests"
@@ -89,7 +79,6 @@ ENV WORKSPACE=/workspace \
     COMFY_PORT=3000 \
     CODE_SERVER_PORT=3100 \
     JUPYTER_PORT=3600
-
 RUN set -eux; \
   mkdir -p ${WORKSPACE}/bin ${WORKSPACE}/models ${WORKSPACE}/logs ${WORKSPACE}/.locks ${WORKSPACE}/.venvs
 
