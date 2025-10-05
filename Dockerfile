@@ -13,11 +13,11 @@ ARG TRITON_VERSION=3.4.0
 ARG ORT_VERSION=1.18.1
 ARG OPENCV_VERSION=4.11.0.86
 
-ENV PIP_DEFAULT_TIMEOUT=120 \
+ENV PIP_DEFAULT_TIMEOUT=180 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
-# ---------- OS deps (build-time only; never apt inside running pods) ----------
+# ---------- OS deps ----------
 RUN set -eux; \
   apt-get update; \
   apt-get install -y --no-install-recommends \
@@ -56,20 +56,21 @@ ENV VENV_DIR=/opt/venvs/comfyui-perf \
 
 RUN set -eux; \
   python3 -m venv "${VENV_DIR}"; \
-  "${VENV_DIR}/bin/python" -m pip install --upgrade --timeout 180 pip wheel setuptools "packaging<25"
+  "${VENV_DIR}/bin/python" -m pip install --upgrade pip wheel setuptools "packaging<25"
 
-# Torch 2.8.0 stack from cu128_full, then Triton
+# Torch 2.8.0 stack from CUDA 12.8 wheels:
+# Use PyPI as the main index, add the PyTorch CUDA index as EXTRA for binary wheels.
 RUN set -eux; \
-  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 180 \
-    --index-url "https://download.pytorch.org/whl/cu128_full" \
+  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 300 \
+    --extra-index-url "https://download.pytorch.org/whl/cu128_full" \
     "torch==${TORCH_VERSION}" "torchvision==${TV_VERSION}" "torchaudio==${TA_VERSION}"; \
-  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 180 \
-    --index-url "https://download.pytorch.org/whl" \
+  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 300 \
+    --extra-index-url "https://download.pytorch.org/whl" \
     "triton==${TRITON_VERSION}"
 
-# Back to default index for the rest
+# Back to PyPI for the rest
 RUN set -eux; \
-  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 180 \
+  "${VENV_DIR}/bin/pip" install --prefer-binary --timeout 300 \
     "onnxruntime-gpu==${ORT_VERSION}" \
     "opencv-python-headless==${OPENCV_VERSION}" \
     "fastapi" "uvicorn" "pydantic" "tqdm" "pillow" "requests"
