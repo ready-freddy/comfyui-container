@@ -1,21 +1,12 @@
 name: build-and-push
 
 on:
-  # Manual run with inputs (gives you a Tag box in the UI)
   workflow_dispatch:
     inputs:
       tag:
         description: "Docker tag to push (e.g., v5.2.5)"
         required: true
         default: "v5.2.5"
-      add_latest:
-        description: "Also tag and push :latest? (true/false)"
-        required: false
-        default: "true"
-  # Optional: run when you push a git tag like v5.2.5
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: read
@@ -23,7 +14,7 @@ permissions:
 
 env:
   IMAGE: ghcr.io/ready-freddy/comfyui-cu128
-  CACHE_TAG: ghcr.io/ready-freddy/comfyui-cu128:cache
+  CACHE: ghcr.io/ready-freddy/comfyui-cu128:cache
 
 jobs:
   build:
@@ -31,34 +22,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Compute tags
-        id: meta
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ github.event.inputs.tag }}"
-            ADD_LATEST="${{ github.event.inputs.add_latest }}"
-          else
-            TAG="${GITHUB_REF_NAME}"     # e.g. v5.2.5 on tag push
-            ADD_LATEST="false"
-          fi
-
-          IMAGE="${{ env.IMAGE }}"
-          echo "Primary tag: ${TAG}"
-          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
-          TAGS="${IMAGE}:${TAG}"
-          if [ "${ADD_LATEST}" = "true" ] || [ "${ADD_LATEST}" = "True" ]; then
-            TAGS="${TAGS}"$'\n'"${IMAGE}:latest"
-          fi
-
-          {
-            echo "tags<<EOF"
-            echo "${TAGS}"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -76,6 +39,8 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=registry,ref=${{ env.CACHE_TAG }}
-          cache-to: type=registry,ref=${{ env.CACHE_TAG }},mode=max
+          tags: |
+            ${{ env.IMAGE }}:${{ inputs.tag }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=registry,ref=${{ env.CACHE }}
+          cache-to: type=registry,ref=${{ env.CACHE }},mode=max
