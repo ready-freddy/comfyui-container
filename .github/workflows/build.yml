@@ -22,3 +22,5 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/comfyui-cu128:v5.2.5
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/comfyui-cu128:cache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/comfyui-cu128:cache,mode=max
