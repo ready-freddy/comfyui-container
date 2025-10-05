@@ -1,57 +1,64 @@
 # syntax=docker/dockerfile:1.7
-FROM --platform=linux/amd64 nvidia/cuda:12.8.1-runtime-ubuntu22.04
+FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG TORCH_VERSION=2.8.0
-ARG TV_VERSION=0.23.0
-ARG TA_VERSION=2.8.0
-ARG TRITON_VERSION=3.4.0
+ARG CODE_SERVER_VERSION=4.92.2
+ARG NODE_VERSION=20.18.0
+ARG IMAGE_VERSION="v0"
 
-ENV VENV_DIR=/opt/venvs/comfyui \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PATH="/opt/venvs/comfyui/bin:${PATH}"
-
-# System deps (build-time only; never apt inside running pods)
+# --- Base OS + Python + DEVEL toolchain (nvcc via -devel base) ---
 RUN set -eux; \
   apt-get update; \
   apt-get install -y --no-install-recommends \
-    ca-certificates curl wget git jq tini \
-    build-essential pkg-config \
+    python3 python3-venv python3-pip python3-dev \
+    git curl ca-certificates unzip xz-utils iproute2 procps \
+    # runtime GUI libs some Python libs expect
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
-    ffmpeg \
-    python3 python3-dev python3-venv; \
+    # full build toolchain (g++ etc)
+    build-essential g++ make ninja-build cmake pkg-config \
+    # "libOPEN*" dev cluster for native builds
+    libopencv-core-dev libopencv-imgproc-dev libopencv-highgui-dev \
+    libopencv-videoio-dev libopenblas-dev libomp-dev libglib2.0-dev libgl1-mesa-dev; \
   rm -rf /var/lib/apt/lists/*
 
-# Create venv and upgrade pip tooling
+# --- Node 20 (for node-gyp / dashboard builds when needed) ---
 RUN set -eux; \
-  python3 -m venv "${VENV_DIR}"; \
-  python -m pip install --upgrade pip wheel setuptools "packaging<25"
+  curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz \
+    | tar -xJ -C /opt; \
+  ln -sf /opt/node-v${NODE_VERSION}-linux-x64/bin/node /usr/local/bin/node; \
+  ln -sf /opt/node-v${NODE_VERSION}-linux-x64/bin/npm  /usr/local/bin/npm; \
+  ln -sf /opt/node-v${NODE_VERSION}-linux-x64/bin/npx  /usr/local/bin/npx
 
-# Install PyTorch stack by direct wheel URLs (CUDA 12.8)
+# --- Workspace skeleton ---
+RUN set -eux; mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit,.venvs,.locks} /scripts
+
+# --- code-server baked (autostart policy unchanged) ---
 RUN set -eux; \
-  PYTAG="$(python - <<'PY'\nimport sys;print(f'cp{sys.version_info.major}{sys.version_info.minor}')\nPY\n)"; \
-  PLAT="manylinux_2_28_x86_64"; \
-  BASE="https://download.pytorch.org/whl"; \
-  curl -fSL "${BASE}/cu128/torch-${TORCH_VERSION}+cu128-${PYTAG}-${PYTAG}-${PLAT}.whl" -o /tmp/torch.whl; \
-  curl -fSL "${BASE}/cu128/torchvision-${TV_VERSION}+cu128-${PYTAG}-${PYTAG}-${PLAT}.whl" -o /tmp/torchvision.whl; \
-  curl -fSL "${BASE}/cu128/torchaudio-${TA_VERSION}+cu128-${PYTAG}-${PYTAG}-${PLAT}.whl" -o /tmp/torchaudio.whl; \
-  pip install --no-index /tmp/torch.whl /tmp/torchvision.whl /tmp/torchaudio.whl; \
-  rm -f /tmp/torch*.whl /tmp/torchvision*.whl /tmp/torchaudio*.whl
+  curl -L "https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-amd64.tar.gz" \
+    | tar -xz -C /opt; \
+  ln -sf /opt/code-server-${CODE_SERVER_VERSION}-linux-amd64/bin/code-server /usr/local/bin/code-server
 
-# Triton (optional but recommended; ignore failure gracefully)
-RUN set -eux; \
-  PYTAG="$(python - <<'PY'\nimport sys;print(f'cp{sys.version_info.major}{sys.version_info.minor}')\nPY\n)"; \
-  TRITON_FILE="triton-${TRITON_VERSION}-${PYTAG}-${PYTAG}-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"; \
-  TRITON_URL="https://download.pytorch.org/whl/triton/${TRITON_FILE}"; \
-  curl -fSL "${TRITON_URL}" -o /tmp/triton.whl && pip install --no-index /tmp/triton.whl || echo '*** Triton optional; continuing'; \
-  rm -f /tmp/triton.whl
+# --- Runtime toggles (ComfyUI manual; Jupyter optional) ---
+ENV COMFY_PORT=3000 \
+    CODE_SERVER_PORT=3100 \
+    JUPYTER_PORT=3600 \
+    START_CODE_SERVER=1 \
+    START_JUPYTER=0 \
+    START_COMFYUI=0 \
+    STARTUP_SLEEP_ONLY=0 \
+    SKIP_PROVISION=0 \
+    SAFE_START=0
 
-# Common runtime libs
-RUN set -eux; \
-  pip install --upgrade --prefer-binary \
-    fastapi uvicorn pydantic tqdm pillow requests \
-    opencv-python-headless onnxruntime-gpu
+# correct (your files are under scripts/):
+COPY scripts/entrypoint.sh    /scripts/entrypoint.sh
+COPY scripts/provision_all.sh /scripts/provision_all.sh
+RUN set -eux; sed -i 's/\r$//' /scripts/*.sh; chmod +x /scripts/*.sh
 
-WORKDIR /workspace
-CMD ["/bin/bash"]
+# --- Provenance ---
+LABEL org.opencontainers.image.version="${IMAGE_VERSION}"
+
+# --- Ports (no auto-start except code-server) ---
+# ComfyUI 3000, code-server 3100, Jupyter 3600, AI-Toolkit Trainer 7860, Dashboard 8675
+EXPOSE 3000 3100 3600 7860 8675
+
+ENTRYPOINT ["/scripts/entrypoint.sh"]
