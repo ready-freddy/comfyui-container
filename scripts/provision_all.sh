@@ -60,7 +60,7 @@ else
   git -C "${COMFY_DIR}" pull --ff-only || true
 fi
 
-# ---- comfyctl utility (drop-in) ----
+# ---- comfyctl utility (manual-only policy) ----
 COMFYCTL="${WORKSPACE}/bin/comfyctl"
 cat > "${COMFYCTL}" <<'EOS'
 #!/usr/bin/env bash
@@ -72,11 +72,20 @@ VENV="${WORKSPACE}/.venvs/comfyui-perf"
 APP="${WORKSPACE}/ComfyUI/main.py"
 LOG="${WORKSPACE}/logs/comfyui.$(date +%Y%m%dT%H%M%S).log"
 
+manual_notice() {
+  echo "[policy] Manual-only mode active. To start ComfyUI:"
+  echo "  /workspace/bin/comfy-singleton start"
+  echo "If you truly need auto-start, re-run with START_COMFYUI=1 environment variable."
+}
+
 case "$CMD" in
   start)
+    if [[ "\${START_COMFYUI:-0}" != "1" ]]; then
+      manual_notice; exit 0
+    fi
     pkill -f "python.*ComfyUI/main.py" || true
-    nohup "${VENV}/bin/python" -u "$APP" --listen 0.0.0.0 --port "$PORT" >>"$LOG" 2>&1 &
-    echo "started :$PORT (log $LOG)"
+    nohup "\${VENV}/bin/python" -u "\$APP" --listen 0.0.0.0 --port "\$PORT" >>"\$LOG" 2>&1 &
+    echo "started :\$PORT (log \$LOG)"
     ;;
   stop)
     pkill -f "python.*ComfyUI/main.py" || true
@@ -86,10 +95,10 @@ case "$CMD" in
     pgrep -f "python.*ComfyUI/main.py" >/dev/null && echo "running" || echo "not running"
     ;;
   logs)
-    tail -n 200 -F "$LOG"
+    tail -n 200 -F "\$LOG"
     ;;
   *)
-    echo "usage: $0 {start|stop|status|logs}"; exit 2;;
+    echo "usage: \$0 {start|stop|status|logs}"; exit 2;;
 esac
 EOS
 chmod +x "${COMFYCTL}"
@@ -114,4 +123,4 @@ except Exception as e:
     print("I/O libs issue:", e)
 PY
 
-log "provision: complete"
+log "provision: complete (manual-only ComfyUI policy enforced)"
