@@ -22,8 +22,9 @@ if [ ! -x "${VENV_DIR}/bin/python" ]; then
   python3 -m venv "${VENV_DIR}"
 fi
 
-# upgrade pip toolchain
-"${VENV_DIR}/bin/python" -m pip install --upgrade --timeout 300 pip wheel setuptools "packaging<25" >/dev/null
+# upgrade pip toolchain & ensure setuptools/pkg_resources are permanently present
+"${VENV_DIR}/bin/python" -m pip install --upgrade --timeout 300 \
+  pip wheel setuptools "packaging<25" av >/dev/null
 
 PIP="${VENV_DIR}/bin/pip"
 
@@ -77,15 +78,10 @@ PORT="${COMFY_PORT:-3000}"
 WORKSPACE="${WORKSPACE:-/workspace}"
 VENV="${WORKSPACE}/.venvs/comfyui-perf"
 APP="${WORKSPACE}/ComfyUI/main.py"
-LOG="${WORKSPACE}/logs/comfyui.$(date +%Y%m%dT%H%M%S).log"
-
-manual_notice() {
-  echo "[policy] Manual-only mode active. To start ComfyUI:"
-  echo "  /workspace/bin/comfy-singleton start"
-}
 
 case "$CMD" in
   start)
+    LOG="${WORKSPACE}/logs/comfyui.$(date +%Y%m%dT%H%M%S).log"
     pkill -f "python.*ComfyUI/main.py" || true
     nohup "${VENV}/bin/python" -u "$APP" --listen 0.0.0.0 --port "$PORT" >>"$LOG" 2>&1 &
     echo "started :$PORT (log $LOG)"
@@ -98,7 +94,12 @@ case "$CMD" in
     pgrep -f "python.*ComfyUI/main.py" >/dev/null && echo "running" || echo "not running"
     ;;
   logs)
-    tail -n 200 -F "$LOG"
+    LATEST_LOG=$(ls -t "${WORKSPACE}/logs"/comfyui.*.log 2>/dev/null | head -n1 || true)
+    if [ -n "$LATEST_LOG" ] && [ -f "$LATEST_LOG" ]; then
+      tail -n 200 -F "$LATEST_LOG"
+    else
+      echo "No log files found in ${WORKSPACE}/logs"
+    fi
     ;;
   *)
     echo "usage: $0 {start|stop|status|logs}"; exit 2;;
