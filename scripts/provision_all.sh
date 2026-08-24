@@ -25,23 +25,18 @@ fi
 # upgrade pip toolchain
 "${VENV_DIR}/bin/python" -m pip install --upgrade --timeout 300 pip wheel setuptools "packaging<25" >/dev/null
 
-# ---- PyTorch stack (CUDA 12.8) via extra index, with fallback ----
 PIP="${VENV_DIR}/bin/pip"
+
+# ---- PyTorch stack (CUDA 12.8) ----
 install_torch() {
-  log "pip: installing torch ${TORCH_VERSION}, torchvision ${TV_VERSION}, torchaudio ${TA_VERSION} (CUDA 12.8)"
-  if "${PIP}" install --prefer-binary --timeout 600 \
-      --extra-index-url https://download.pytorch.org/whl/cu128_full \
-      torch=="${TORCH_VERSION}" torchvision=="${TV_VERSION}" torchaudio=="${TA_VERSION}"; then
-    return 0
-  fi
-  log "pip: fallback to cu128 index"
+  log "pip: ensuring torch ${TORCH_VERSION}+cu128, torchvision ${TV_VERSION}+cu128, torchaudio ${TA_VERSION}+cu128"
   "${PIP}" install --prefer-binary --timeout 600 \
-      --index-url https://download.pytorch.org/whl/cu128 \
-      torch=="${TORCH_VERSION}" torchvision=="${TV_VERSION}" torchaudio=="${TA_VERSION}"
+      --extra-index-url https://download.pytorch.org/whl/cu128 \
+      torch=="${TORCH_VERSION}+cu128" torchvision=="${TV_VERSION}+cu128" torchaudio=="${TA_VERSION}+cu128"
 }
 install_torch
 
-# Triton (optional; ignore failures)
+# Triton
 "${PIP}" install --prefer-binary --timeout 600 \
   --extra-index-url https://download.pytorch.org/whl \
   triton=="${TRITON_VERSION}" || log "triton optional: continuing"
@@ -50,6 +45,18 @@ install_torch
 "${PIP}" install --prefer-binary --timeout 600 \
   onnxruntime-gpu=="${ORT_VERSION}" opencv-python-headless=="${OPENCV_VERSION}" \
   fastapi uvicorn pydantic tqdm pillow requests >/dev/null
+
+# ---- 1. Hardware Attention Kernels (SageAttention + Flash-Attention) ----
+log "pip: checking / installing SageAttention and Flash-Attention"
+export TORCH_CUDA_ARCH_LIST="8.9;9.0"
+"${PIP}" install --prefer-binary sageattention || log "sageattention failed"
+"${PIP}" install --prefer-binary flash-attn --no-build-isolation || log "flash-attn failed"
+
+# ---- 2. Audio DSP & Voice Conversion Stack ----
+log "pip: ensuring clean audio libraries"
+"${PIP}" install --prefer-binary \
+  sounddevice soundfile librosa==0.10.1 perth resemble-perth \
+  hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer
 
 # ---- ComfyUI repo (idempotent) ----
 if [ ! -d "${COMFY_DIR}/.git" ]; then
@@ -60,7 +67,7 @@ else
   git -C "${COMFY_DIR}" pull --ff-only || true
 fi
 
-# ---- comfyctl utility (manual-only policy) ----
+# ---- comfyctl utility ----
 COMFYCTL="${WORKSPACE}/bin/comfyctl"
 cat > "${COMFYCTL}" <<'EOS'
 #!/usr/bin/env bash
@@ -75,17 +82,13 @@ LOG="${WORKSPACE}/logs/comfyui.$(date +%Y%m%dT%H%M%S).log"
 manual_notice() {
   echo "[policy] Manual-only mode active. To start ComfyUI:"
   echo "  /workspace/bin/comfy-singleton start"
-  echo "If you truly need auto-start, re-run with START_COMFYUI=1 environment variable."
 }
 
 case "$CMD" in
   start)
-    if [[ "\${START_COMFYUI:-0}" != "1" ]]; then
-      manual_notice; exit 0
-    fi
     pkill -f "python.*ComfyUI/main.py" || true
-    nohup "\${VENV}/bin/python" -u "\$APP" --listen 0.0.0.0 --port "\$PORT" >>"\$LOG" 2>&1 &
-    echo "started :\$PORT (log \$LOG)"
+    nohup "${VENV}/bin/python" -u "$APP" --listen 0.0.0.0 --port "$PORT" >>"$LOG" 2>&1 &
+    echo "started :$PORT (log $LOG)"
     ;;
   stop)
     pkill -f "python.*ComfyUI/main.py" || true
@@ -95,32 +98,33 @@ case "$CMD" in
     pgrep -f "python.*ComfyUI/main.py" >/dev/null && echo "running" || echo "not running"
     ;;
   logs)
-    tail -n 200 -F "\$LOG"
+    tail -n 200 -F "$LOG"
     ;;
   *)
-    echo "usage: \$0 {start|stop|status|logs}"; exit 2;;
+    echo "usage: $0 {start|stop|status|logs}"; exit 2;;
 esac
 EOS
 chmod +x "${COMFYCTL}"
 
-# ---- sanity print ----
+# ---- sanity check ----
 "${VENV_DIR}/bin/python" - <<'PY' || true
-import torch, sys
-print("Torch:", torch.__version__, "CUDA:", getattr(torch.version, "cuda", None), "avail:", torch.cuda.is_available())
+import torch
+print("--- GPU SANITY CHECK ---")
+print("PyTorch:", torch.__version__, "| CUDA:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("GPU:", torch.cuda.get_device_name(0))
 try:
-    import torchvision as tv; print("Vision:", tv.__version__)
-    import torchaudio as ta; print("Audio:", ta.__version__)
+    import sageattention; print("SageAttention: READY")
 except Exception as e:
-    print("Torch extras missing:", e)
+    print("SageAttention:", e)
 try:
-    import triton; print("Triton:", triton.__version__)
+    import flash_attn; print("FlashAttention: READY")
 except Exception as e:
-    print("Triton missing:", e)
+    print("FlashAttention:", e)
 try:
-    import onnxruntime as ort; print("ORT:", ort.__version__)
-    import cv2; print("OpenCV:", cv2.__version__)
+    import sounddevice; print("SoundDevice (PortAudio): READY")
 except Exception as e:
-    print("I/O libs issue:", e)
+    print("SoundDevice:", e)
 PY
 
-log "provision: complete (manual-only ComfyUI policy enforced)"
+log "provision: complete"
