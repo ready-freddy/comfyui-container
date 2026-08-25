@@ -22,9 +22,9 @@ if [ ! -x "${VENV_DIR}/bin/python" ]; then
   python3 -m venv "${VENV_DIR}"
 fi
 
-# upgrade pip toolchain & ensure setuptools/pkg_resources are permanently present
+# upgrade pip toolchain & lock setuptools<70 so pkg_resources is permanently preserved
 "${VENV_DIR}/bin/python" -m pip install --upgrade --timeout 300 \
-  pip wheel setuptools "packaging<25" av >/dev/null
+  pip wheel "setuptools<70" "packaging<25" comfyui-workflow-templates av >/dev/null
 
 PIP="${VENV_DIR}/bin/pip"
 
