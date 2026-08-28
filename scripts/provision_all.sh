@@ -14,6 +14,11 @@ TRITON_VERSION="${TRITON_VERSION:-3.4.0}"
 ORT_VERSION="${ORT_VERSION:-1.18.1}"
 OPENCV_VERSION="${OPENCV_VERSION:-4.11.0.86}"
 
+# Ensure CUDA compat library paths and target archs are exported
+export TORCH_CUDA_ARCH_LIST="8.9;9.0"
+export CUDA_HOME="/usr/local/cuda"
+export LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
+
 log(){ printf '%s %s\n' "[$(date +'%Y-%m-%dT%H:%M:%S')]" "$*"; }
 
 # ---- ensure venv ----
@@ -47,11 +52,11 @@ install_torch
   onnxruntime-gpu=="${ORT_VERSION}" opencv-python-headless=="${OPENCV_VERSION}" \
   fastapi uvicorn pydantic tqdm pillow requests >/dev/null
 
-# ---- 1. Hardware Attention Kernels (SageAttention + Flash-Attention) ----
-log "pip: checking / installing SageAttention and Flash-Attention"
-export TORCH_CUDA_ARCH_LIST="8.9;9.0"
-"${PIP}" install --prefer-binary sageattention || log "sageattention failed"
+# ---- 1. Hardware Attention Kernels (SageAttention + Flash-Attention + Comfy-Kitchen) ----
+log "pip: checking / installing SageAttention, Flash-Attention, and comfy-kitchen"
+"${PIP}" install --no-cache-dir --no-binary :all: sageattention || log "sageattention failed"
 "${PIP}" install --prefer-binary flash-attn --no-build-isolation || log "flash-attn failed"
+"${PIP}" install --prefer-binary comfy-kitchen || log "comfy-kitchen check passed"
 
 # ---- 2. Audio DSP & Voice Conversion Stack ----
 log "pip: ensuring clean audio libraries"
@@ -78,6 +83,8 @@ PORT="${COMFY_PORT:-3000}"
 WORKSPACE="${WORKSPACE:-/workspace}"
 VENV="${WORKSPACE}/.venvs/comfyui-perf"
 APP="${WORKSPACE}/ComfyUI/main.py"
+
+export LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
 case "$CMD" in
   start)
