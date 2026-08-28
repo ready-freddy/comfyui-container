@@ -21,10 +21,11 @@ SAFE_START="${SAFE_START:-0}"
 # Ensure workspace layout exists early
 mkdir -p "${WORKSPACE}/"{bin,logs,.locks,.venvs,models,ComfyUI}
 
-# Prefer the project venv tools in all child processes
+# Prefer the project venv tools in all child processes and forward CUDA compat libs
 export VIRTUAL_ENV="${VENV_DIR}"
 export PATH="${WORKSPACE}/bin:${VENV_DIR}/bin:${PATH}"
 export PIP_REQUIRE_VIRTUALENV=1
+export LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
 # --- helpers ---------------------------------------------------------
 log(){ printf '%s %s\n' "[$(date +'%Y-%m-%dT%H:%M:%S')]" "$*"; }
@@ -63,7 +64,7 @@ if [ "${START_JUPYTER}" = "1" ]; then
 fi
 
 # ComfyUI (manual-only policy)
-log "ComfyUI auto-start disabled by policy; manual start via: /workspace/bin/comfy-singleton start"
+log "ComfyUI auto-start disabled by policy; manual start via: /workspace/bin/comfyctl start"
 log "target port for ComfyUI: :${COMFY_PORT}"
 
 # If nothing is running, idle the container
