@@ -6,15 +6,18 @@ ARG CODE_SERVER_VERSION=4.92.2
 ARG NODE_VERSION=20.18.0
 ARG IMAGE_VERSION="v5.3.0"
 
-# Target Ada Lovelace (L40S, RTX 6000 Ada) and Hopper (H200)
+# Target Ada Lovelace (L40S, RTX 6000 Ada) and Hopper (H200) + CUDA Forward Compat Path
 ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
     PYTHONUNBUFFERED=1 \
-    MAX_JOBS=4
+    MAX_JOBS=4 \
+    CUDA_HOME="/usr/local/cuda" \
+    LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
-# --- 1. Base OS + C++ Devel Toolchain + Media/Audio DSP Headers ---
+# --- 1. Base OS + CUDA Compat + C++ Devel Toolchain + Media/Audio DSP Headers ---
 RUN set -eux; \
   apt-get update; \
   apt-get install -y --no-install-recommends \
+    cuda-compat-12-8 \
     python3 python3-venv python3-pip python3-dev \
     git curl ca-certificates unzip xz-utils iproute2 procps \
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
