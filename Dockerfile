@@ -26,7 +26,7 @@ RUN set -eux; \
     portaudio19-dev libasound2-dev libjack-jackd2-dev libsamplerate0-dev \
     sox libsox-fmt-all ffmpeg \
     libopencv-core-dev libopencv-imgproc-dev libopencv-highgui-dev \
-    libopencv-videoio-dev libopenblas-dev libomp-dev libglib2.0-dev libgl1-mesa-dev; \
+    libopencv-videoio-dev libopenblas-dev libomp-dev libgl1-mesa-dev; \
   rm -rf /var/lib/apt/lists/*
 
 # --- 2. Node 20 ---
@@ -46,7 +46,7 @@ RUN set -eux; \
     | tar -xz -C /opt; \
   ln -sf /opt/code-server-${CODE_SERVER_VERSION}-linux-amd64/bin/code-server /usr/local/bin/code-server
 
-# --- 5. Virtualenv, PyTorch & Compile Comfy-Kitchen from Source ---
+# --- 5. Virtualenv, PyTorch & Native sm_89 Comfy-Kitchen Compilation ---
 RUN set -eux; \
   python3 -m venv /workspace/.venvs/comfyui-perf; \
   /workspace/.venvs/comfyui-perf/bin/pip install --upgrade pip wheel "setuptools<70" "packaging<25" "nanobind>=2.0.0" cmake; \
@@ -56,7 +56,12 @@ RUN set -eux; \
   /workspace/.venvs/comfyui-perf/bin/pip install triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
     fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av; \
   /workspace/.venvs/comfyui-perf/bin/pip install --prefer-binary flash-attn --no-build-isolation || true; \
-  /workspace/.venvs/comfyui-perf/bin/pip install --no-cache-dir --no-binary comfy-kitchen comfy-kitchen
+  # Clone and build native sm_89 comfy-kitchen from Git
+  git clone --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen; \
+  cd /tmp/comfy-kitchen; \
+  /workspace/.venvs/comfyui-perf/bin/pip install --no-build-isolation .; \
+  cd /; \
+  rm -rf /tmp/comfy-kitchen
 
 # --- 6. Runtime toggles ---
 ENV COMFY_PORT=3000 \
