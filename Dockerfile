@@ -4,15 +4,17 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CODE_SERVER_VERSION=4.92.2
 ARG NODE_VERSION=20.18.0
-ARG IMAGE_VERSION="v5.4.6"
+ARG IMAGE_VERSION="v5.4.7"
 
-# Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90)
+# Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90) + Compiler Constraints
 ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
     PYTHONUNBUFFERED=1 \
     MAX_JOBS=4 \
+    TORCHINDUCTOR_COMPILE_THREADS=4 \
+    OMP_NUM_THREADS=4 \
     CUDA_HOME="/usr/local/cuda" \
     PATH="/opt/venvs/comfyui-perf/bin:/usr/local/cuda/bin:${PATH}" \
-    LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
+    LD_LIBRARY_PATH="/workspace/lib:/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
 # --- 1. Base OS + CUDA Compat + Native Dev Toolchain ---
 RUN set -eux; \
@@ -46,7 +48,7 @@ RUN set -eux; \
     | tar -xz -C /opt; \
   ln -sf /opt/code-server-${CODE_SERVER_VERSION}-linux-amd64/bin/code-server /usr/local/bin/code-server
 
-# --- 5. Virtualenv in Immutable /opt Layer ---
+# --- 5. Virtualenv in Immutable /opt Layer (All Dependencies Pre-Baked) ---
 RUN set -eux; \
   python3 -m venv /opt/venvs/comfyui-perf; \
   /opt/venvs/comfyui-perf/bin/pip install --upgrade pip wheel "setuptools<70" "packaging<25" nanobind cmake ninja; \
@@ -56,7 +58,7 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
     fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av \
     sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer \
-    sqlalchemy alembic; \
+    sqlalchemy alembic comfy-aimdo blake3; \
   /opt/venvs/comfyui-perf/bin/pip install --prefer-binary flash-attn --no-build-isolation || true
 
 # --- 6. Pre-bake Native Comfy-Kitchen ---
@@ -65,7 +67,7 @@ RUN set -eux; \
   cd /tmp/comfy-kitchen && /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation . || true; \
   rm -rf /tmp/comfy-kitchen
 
-# --- 7. Runtime toggles ---
+# --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
     CODE_SERVER_PORT=3100 \
     JUPYTER_PORT=3600 \
