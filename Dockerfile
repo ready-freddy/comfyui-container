@@ -49,15 +49,15 @@ RUN set -eux; \
 # --- 5. Virtualenv, PyTorch & Native sm_89 Comfy-Kitchen Compilation ---
 RUN set -eux; \
   python3 -m venv /workspace/.venvs/comfyui-perf; \
-  /workspace/.venvs/comfyui-perf/bin/pip install --upgrade pip wheel "setuptools<70" "packaging<25" "nanobind>=2.0.0" cmake; \
+  /workspace/.venvs/comfyui-perf/bin/pip install --upgrade pip wheel "setuptools<70" "packaging<25" "nanobind>=2.0.0" scikit-build-core cmake; \
   /workspace/.venvs/comfyui-perf/bin/pip install --timeout 600 \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /workspace/.venvs/comfyui-perf/bin/pip install triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
     fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av; \
   /workspace/.venvs/comfyui-perf/bin/pip install --prefer-binary flash-attn --no-build-isolation || true; \
-  # Clone and build native sm_89 comfy-kitchen from Git
-  git clone --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen; \
+  # Clone recursively to include CUTLASS submodules and compile natively for sm_89
+  git clone --recursive --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen; \
   cd /tmp/comfy-kitchen; \
   /workspace/.venvs/comfyui-perf/bin/pip install --no-build-isolation .; \
   cd /; \
