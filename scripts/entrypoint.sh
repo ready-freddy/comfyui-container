@@ -1,84 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${WORKSPACE:-/workspace}"
-# Venv points safely to immutable /opt layer with fallback symlink
-VENV_DIR="/opt/venvs/comfyui-perf"
+echo "=== [BOOT] INITIALIZING CONTAINER ENVIRONMENT ==="
 
-COMFY_PORT="${COMFY_PORT:-3000}"
-CODE_SERVER_PORT="${CODE_SERVER_PORT:-3100}"
-JUPYTER_PORT="${JUPYTER_PORT:-3600}"
+# 1. Ensure directory skeleton on network mount
+mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit} /workspace/.venvs /workspace/.locks
 
-START_CODE_SERVER="${START_CODE_SERVER:-1}"
-START_JUPYTER="${START_JUPYTER:-0}"
-START_COMFYUI="${START_COMFYUI:-0}"
+# 2. Redirect legacy network venv paths cleanly to /opt NVMe
+ln -sfn /opt/venvs/comfyui-perf /workspace/.venvs/comfyui-perf
 
-STARTUP_SLEEP_ONLY="${STARTUP_SLEEP_ONLY:-0}"
-SKIP_PROVISION="${SKIP_PROVISION:-0}"
-SAFE_START="${SAFE_START:-0}"
+# 3. Clear stale lock/PID files from previous boots
+rm -f /workspace/.locks/.*.pid /workspace/comfy_env.sh 2>/dev/null || true
 
-mkdir -p "${WORKSPACE}/"{bin,logs,.locks,models,ComfyUI}
-
-# Backward-compatibility symlink for external scripts expecting /workspace/.venvs
-mkdir -p "${WORKSPACE}/.venvs"
-ln -sfn /opt/venvs/comfyui-perf "${WORKSPACE}/.venvs/comfyui-perf"
-
-export VIRTUAL_ENV="${VENV_DIR}"
-export PATH="${WORKSPACE}/bin:${VENV_DIR}/bin:${PATH}"
-export PIP_REQUIRE_VIRTUALENV=1
-export CUDA_HOME="/usr/local/cuda"
-export TORCH_CUDA_ARCH_LIST="8.9;9.0"
-export LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
-
-log(){ printf '%s %s\n' "[$(date +'%Y-%m-%dT%H:%M:%S')]" "$*"; }
-start_bg(){ ("$@" & echo $! >"${WORKSPACE}/.locks/.$(basename "$1").pid" ) || true; }
-
-if [ "${SKIP_PROVISION}" != "1" ]; then
-  log "provision: running /scripts/provision_all.sh"
-  /scripts/provision_all.sh || log "provision: continued after non-fatal issue"
-else
-  log "provision: skipped by SKIP_PROVISION=1"
+# 4. Run workspace provisioning if enabled
+if [[ "${SKIP_PROVISION:-0}" != "1" ]] && [[ -f "/scripts/provision_all.sh" ]]; then
+    /scripts/provision_all.sh || echo "[WARN] Provision script exited with errors."
 fi
 
-pids=()
-
-# Code-Server
-if [ "${START_CODE_SERVER}" = "1" ]; then
-  LOG="${WORKSPACE}/logs/code-server.$(date +%Y%m%dT%H%M%S).log"
-  log "start: code-server :${CODE_SERVER_PORT} (log: ${LOG})"
-  start_bg /usr/local/bin/code-server --bind-addr 0.0.0.0:"${CODE_SERVER_PORT}" --auth none >>"${LOG}" 2>&1
-  pids+=("code-server")
+# 5. Start Code-Server if enabled
+if [[ "${START_CODE_SERVER:-1}" == "1" ]]; then
+    echo "[BOOT] Starting Code-Server on port ${CODE_SERVER_PORT:-3100}..."
+    code-server --bind-addr 0.0.0.0:${CODE_SERVER_PORT:-3100} --auth none /workspace > /workspace/logs/code-server.log 2>&1 &
 fi
 
-# JupyterLab
-if [ "${START_JUPYTER}" = "1" ]; then
-  LOG="${WORKSPACE}/logs/jupyter.$(date +%Y%m%dT%H%M%S).log"
-  log "start: jupyterlab :${JUPYTER_PORT} (log: ${LOG})"
-  "${VENV_DIR}/bin/python" -m pip show jupyterlab >/dev/null 2>&1 || \
-    "${VENV_DIR}/bin/pip" install --prefer-binary jupyterlab >>"${LOG}" 2>&1
-  start_bg "${VENV_DIR}/bin/python" -m jupyterlab \
-      --ServerApp.token='' --ServerApp.password='' \
-      --ServerApp.ip=0.0.0.0 --ServerApp.port="${JUPYTER_PORT}" >>"${LOG}" 2>&1
-  pids+=("jupyterlab")
+# 6. Start ComfyUI if configured to auto-start
+if [[ "${START_COMFYUI:-0}" == "1" ]] && [[ -f "/workspace/bin/comfy-singleton" ]]; then
+    echo "[BOOT] Starting ComfyUI via comfy-singleton..."
+    /workspace/bin/comfy-singleton start || true
 fi
 
-log "ComfyUI auto-start disabled by policy; manual start via: /workspace/bin/comfyctl start or comfy-singleton start"
-log "target port for ComfyUI: :${COMFY_PORT}"
+echo "=== [BOOT] SYSTEM READY ==="
 
-if [ "${STARTUP_SLEEP_ONLY}" = "1" ] || [ "${#pids[@]}" = "0" ]; then
-  log "idle: no long-running services requested; sleeping"
-  exec sleep infinity
-fi
-
-while :; do
-  alive=false
-  for name in "${pids[@]}"; do
-    pidfile="${WORKSPACE}/.locks/.${name}.pid"
-    if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-      alive=true
-      break
-    fi
-  done
-  $alive || { log "all services exited"; exit 0; }
-  sleep 3
-done
+# 7. Keep container alive
+exec tail -f /dev/null
