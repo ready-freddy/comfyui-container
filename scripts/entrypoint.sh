@@ -2,7 +2,8 @@
 set -euo pipefail
 
 WORKSPACE="${WORKSPACE:-/workspace}"
-VENV_DIR="${WORKSPACE}/.venvs/comfyui-perf"
+# Venv points safely to immutable /opt layer with fallback symlink
+VENV_DIR="/opt/venvs/comfyui-perf"
 
 COMFY_PORT="${COMFY_PORT:-3000}"
 CODE_SERVER_PORT="${CODE_SERVER_PORT:-3100}"
@@ -16,7 +17,11 @@ STARTUP_SLEEP_ONLY="${STARTUP_SLEEP_ONLY:-0}"
 SKIP_PROVISION="${SKIP_PROVISION:-0}"
 SAFE_START="${SAFE_START:-0}"
 
-mkdir -p "${WORKSPACE}/"{bin,logs,.locks,.venvs,models,ComfyUI}
+mkdir -p "${WORKSPACE}/"{bin,logs,.locks,models,ComfyUI}
+
+# Backward-compatibility symlink for external scripts expecting /workspace/.venvs
+mkdir -p "${WORKSPACE}/.venvs"
+ln -sfn /opt/venvs/comfyui-perf "${WORKSPACE}/.venvs/comfyui-perf"
 
 export VIRTUAL_ENV="${VENV_DIR}"
 export PATH="${WORKSPACE}/bin:${VENV_DIR}/bin:${PATH}"
@@ -60,7 +65,7 @@ if [ "${START_JUPYTER}" = "1" ]; then
   pids+=("jupyterlab")
 fi
 
-log "ComfyUI auto-start disabled by policy; manual start via: /workspace/bin/comfyctl start"
+log "ComfyUI auto-start disabled by policy; manual start via: /workspace/bin/comfyctl start or comfy-singleton start"
 log "target port for ComfyUI: :${COMFY_PORT}"
 
 if [ "${STARTUP_SLEEP_ONLY}" = "1" ] || [ "${#pids[@]}" = "0" ]; then
