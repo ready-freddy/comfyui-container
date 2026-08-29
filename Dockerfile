@@ -7,15 +7,13 @@ ARG NODE_VERSION=20.18.0
 ARG IMAGE_VERSION="v5.4.0"
 
 # Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90) + Immutable Memory Locks
+# Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90)
 ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
     PYTHONUNBUFFERED=1 \
     MAX_JOBS=4 \
     CUDA_HOME="/usr/local/cuda" \
     PATH="/opt/venvs/comfyui-perf/bin:/usr/local/cuda/bin:${PATH}" \
-    LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}" \
-    PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.8,max_split_size_mb:512" \
-    COMFY_KITCHEN_DISABLE_CUDA=0 \
-    COMFY_KITCHEN_FORCE_TRITON=0
+    LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
 # --- 1. Base OS + CUDA Compat + Native Dev Toolchain ---
 RUN set -eux; \
