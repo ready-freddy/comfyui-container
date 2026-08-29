@@ -2,7 +2,7 @@
 set -euo pipefail
 
 WORKSPACE="${WORKSPACE:-/workspace}"
-VENV_DIR="${WORKSPACE}/.venvs/comfyui-perf"
+VENV_DIR="/opt/venvs/comfyui-perf"
 COMFY_REPO="${COMFY_REPO:-https://github.com/comfyanonymous/ComfyUI.git}"
 COMFY_DIR="${WORKSPACE}/ComfyUI"
 
@@ -14,25 +14,6 @@ export COMFY_KITCHEN_DISABLE_CUDA=0
 export COMFY_KITCHEN_FORCE_TRITON=0
 
 log(){ printf '%s %s\n' "[$(date +'%Y-%m-%dT%H:%M:%S')]" "$*"; }
-
-PIP="${VENV_DIR}/bin/pip"
-
-# ---- Ensure audio libs are present ----
-log "pip: verifying audio and runtime requirements"
-"${PIP}" install --prefer-binary \
-  sounddevice soundfile librosa==0.10.1 perth resemble-perth \
-  hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer >/dev/null
-
-# ---- Native comfy-kitchen Build with Physical GPU Attached ----
-if ! "${VENV_DIR}/bin/python" -c "import comfy_kitchen" 2>/dev/null; then
-  log "comfy-kitchen: building native sm_89 kernels against host GPU driver"
-  rm -rf /tmp/comfy-kitchen
-  git clone --recursive --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen || true
-  if [ -d "/tmp/comfy-kitchen" ]; then
-    (cd /tmp/comfy-kitchen && "${PIP}" install --no-build-isolation . || log "comfy-kitchen build fallback")
-    rm -rf /tmp/comfy-kitchen
-  fi
-fi
 
 # ---- ComfyUI repo (idempotent) ----
 if [ ! -d "${COMFY_DIR}/.git" ]; then
@@ -51,7 +32,7 @@ set -euo pipefail
 CMD="${1:-status}"
 PORT="${COMFY_PORT:-3000}"
 WORKSPACE="${WORKSPACE:-/workspace}"
-VENV="${WORKSPACE}/.venvs/comfyui-perf"
+VENV="/opt/venvs/comfyui-perf"
 APP="${WORKSPACE}/ComfyUI/main.py"
 
 export CUDA_HOME="/usr/local/cuda"
@@ -102,7 +83,7 @@ print("PyTorch:", torch.__version__, "| CUDA:", torch.cuda.is_available())
 if torch.cuda.is_available():
     print("GPU:", torch.cuda.get_device_name(0), "| Capability:", torch.cuda.get_device_capability(0))
 try:
-    import comfy_kitchen; print("Comfy-Kitchen: READY (Native sm_89 Built)")
+    import comfy_kitchen; print("Comfy-Kitchen: READY (Native sm_89/sm_90 Built)")
 except Exception as e:
     print("Comfy-Kitchen:", e)
 try:
