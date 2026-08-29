@@ -14,7 +14,7 @@ log(){ printf '%s %s\n' "[$(date +'%Y-%m-%dT%H:%M:%S')]" "$*"; }
 
 PIP="${VENV_DIR}/bin/pip"
 
-# ---- Ensure audio libs are present ----
+# ---- Ensure audio and runtime helper libraries ----
 log "pip: verifying audio and runtime requirements"
 "${PIP}" install --prefer-binary \
   sounddevice soundfile librosa==0.10.1 perth resemble-perth \
@@ -80,7 +80,7 @@ print("PyTorch:", torch.__version__, "| CUDA:", torch.cuda.is_available())
 if torch.cuda.is_available():
     print("GPU:", torch.cuda.get_device_name(0), "| Capability:", torch.cuda.get_device_capability(0))
 try:
-    import comfy_kitchen; print("Comfy-Kitchen: READY (Source sm_89 Native)")
+    import comfy_kitchen; print("Comfy-Kitchen: READY (Native sm_89 Built)")
 except Exception as e:
     print("Comfy-Kitchen:", e)
 try:
