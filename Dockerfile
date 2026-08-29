@@ -4,14 +4,14 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CODE_SERVER_VERSION=4.92.2
 ARG NODE_VERSION=20.18.0
-ARG IMAGE_VERSION="v5.4.0"
+ARG IMAGE_VERSION="v5.5.0"
 
 # Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90) + Immutable Memory Locks
 ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
     PYTHONUNBUFFERED=1 \
     MAX_JOBS=4 \
     CUDA_HOME="/usr/local/cuda" \
-    PATH="/workspace/.venvs/comfyui-perf/bin:/usr/local/cuda/bin:${PATH}" \
+    PATH="/opt/venvs/comfyui-perf/bin:/usr/local/cuda/bin:${PATH}" \
     LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}" \
     PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.8,max_split_size_mb:512" \
     COMFY_KITCHEN_DISABLE_CUDA=0 \
@@ -40,8 +40,8 @@ RUN set -eux; \
   ln -sf /opt/node-v${NODE_VERSION}-linux-x64/bin/npm  /usr/local/bin/npm; \
   ln -sf /opt/node-v${NODE_VERSION}-linux-x64/bin/npx  /usr/local/bin/npx
 
-# --- 3. Workspace skeleton ---
-RUN set -eux; mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit,.venvs,.locks} /scripts
+# --- 3. Persistent Workspace Skeleton & System Directories ---
+RUN set -eux; mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit} /opt/venvs /scripts
 
 # --- 4. Code-Server ---
 RUN set -eux; \
@@ -49,18 +49,25 @@ RUN set -eux; \
     | tar -xz -C /opt; \
   ln -sf /opt/code-server-${CODE_SERVER_VERSION}-linux-amd64/bin/code-server /usr/local/bin/code-server
 
-# --- 5. Virtualenv, PyTorch & Precompiled Production Toolchain ---
+# --- 5. Virtualenv in Immutable /opt Layer ---
 RUN set -eux; \
-  python3 -m venv /workspace/.venvs/comfyui-perf; \
-  /workspace/.venvs/comfyui-perf/bin/pip install --upgrade pip wheel "setuptools<70" "packaging<25" nanobind cmake ninja; \
-  /workspace/.venvs/comfyui-perf/bin/pip install --timeout 600 \
+  python3 -m venv /opt/venvs/comfyui-perf; \
+  /opt/venvs/comfyui-perf/bin/pip install --upgrade pip wheel "setuptools<70" "packaging<25" nanobind cmake ninja; \
+  /opt/venvs/comfyui-perf/bin/pip install --timeout 600 \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
-  /workspace/.venvs/comfyui-perf/bin/pip install triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
-    fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av; \
-  /workspace/.venvs/comfyui-perf/bin/pip install --prefer-binary flash-attn --no-build-isolation || true
+  /opt/venvs/comfyui-perf/bin/pip install triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
+    fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av \
+    sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer; \
+  /opt/venvs/comfyui-perf/bin/pip install --prefer-binary flash-attn --no-build-isolation || true
 
-# --- 6. Runtime toggles ---
+# --- 6. Pre-bake Native Comfy-Kitchen ---
+RUN set -eux; \
+  git clone --recursive --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen; \
+  cd /tmp/comfy-kitchen && /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation . || true; \
+  rm -rf /tmp/comfy-kitchen
+
+# --- 7. Runtime toggles ---
 ENV COMFY_PORT=3000 \
     CODE_SERVER_PORT=3100 \
     JUPYTER_PORT=3600 \
