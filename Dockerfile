@@ -4,7 +4,7 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CODE_SERVER_VERSION=4.92.2
 ARG NODE_VERSION=20.18.0
-ARG IMAGE_VERSION="v5.4.0"
+ARG IMAGE_VERSION="v5.4.5"
 
 # Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90) + Immutable Memory Locks
 # Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90)
