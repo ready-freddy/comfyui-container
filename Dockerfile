@@ -6,7 +6,6 @@ ARG CODE_SERVER_VERSION=4.92.2
 ARG NODE_VERSION=20.18.0
 ARG IMAGE_VERSION="v5.4.5"
 
-# Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90) + Immutable Memory Locks
 # Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90)
 ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
     PYTHONUNBUFFERED=1 \
@@ -56,7 +55,8 @@ RUN set -eux; \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /opt/venvs/comfyui-perf/bin/pip install triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
     fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av \
-    sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer; \
+    sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer \
+    sqlalchemy alembic; \
   /opt/venvs/comfyui-perf/bin/pip install --prefer-binary flash-attn --no-build-isolation || true
 
 # --- 6. Pre-bake Native Comfy-Kitchen ---
