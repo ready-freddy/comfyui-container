@@ -3,14 +3,18 @@ set -euo pipefail
 CMD="${1:-status}"
 PORT="${COMFY_PORT:-3000}"
 WORKSPACE="${WORKSPACE:-/workspace}"
-VENV="${PERSIST_VENV:-/workspace/.venvs/comfyui-perf}"
+VENV="/opt/venvs/comfyui-perf"
 APP="$WORKSPACE/ComfyUI/main.py"
 LOG="$WORKSPACE/logs/comfyui.$(date +%Y%m%dT%H%M%S).log"
 
 case "$CMD" in
   start)
     pkill -f "python.*ComfyUI/main.py" || true
-    nohup "${VENV}/bin/python" -u "$APP" --listen 0.0.0.0 --port "$PORT" >>"$LOG" 2>&1 &
+    nohup "${VENV}/bin/python" -u "$APP" \
+      --listen 0.0.0.0 \
+      --port "$PORT" \
+      --use-flash-attention \
+      >>"$LOG" 2>&1 &
     echo "started :$PORT (log $LOG)"
     ;;
   stop)
@@ -21,7 +25,12 @@ case "$CMD" in
     pgrep -f "python.*ComfyUI/main.py" >/dev/null && echo "running" || echo "not running"
     ;;
   logs)
-    tail -n 200 -F "$LOG"
+    LATEST_LOG=$(ls -t "$WORKSPACE/logs"/comfyui.*.log 2>/dev/null | head -n1 || true)
+    if [ -n "$LATEST_LOG" ] && [ -f "$LATEST_LOG" ]; then
+      tail -n 200 -F "$LATEST_LOG"
+    else
+      echo "No log files found in $WORKSPACE/logs"
+    fi
     ;;
   *)
     echo "usage: $0 {start|stop|status|logs}"; exit 2;;
