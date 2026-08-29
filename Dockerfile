@@ -8,6 +8,7 @@ ARG IMAGE_VERSION="v5.4.0"
 
 # Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90)
 ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
+    CUDA_ARCHS="89" \
     PYTHONUNBUFFERED=1 \
     MAX_JOBS=4 \
     CUDA_HOME="/usr/local/cuda" \
@@ -46,20 +47,20 @@ RUN set -eux; \
     | tar -xz -C /opt; \
   ln -sf /opt/code-server-${CODE_SERVER_VERSION}-linux-amd64/bin/code-server /usr/local/bin/code-server
 
-# --- 5. Virtualenv, PyTorch & Native sm_89 Comfy-Kitchen Compilation ---
+# --- 5. Virtualenv, PyTorch & Native sm_89 Compilation ---
 RUN set -eux; \
   python3 -m venv /workspace/.venvs/comfyui-perf; \
-  /workspace/.venvs/comfyui-perf/bin/pip install --upgrade pip wheel "setuptools<70" "packaging<25" "nanobind>=2.0.0" scikit-build-core cmake; \
+  /workspace/.venvs/comfyui-perf/bin/pip install --upgrade pip wheel setuptools packaging nanobind cmake ninja; \
   /workspace/.venvs/comfyui-perf/bin/pip install --timeout 600 \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /workspace/.venvs/comfyui-perf/bin/pip install triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
     fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av; \
   /workspace/.venvs/comfyui-perf/bin/pip install --prefer-binary flash-attn --no-build-isolation || true; \
-  # Clone recursively to include CUTLASS submodules and compile natively for sm_89
-  git clone --recursive --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen; \
+  # Build comfy-kitchen directly using its setup.py with architecture pinned to sm_89
+  git clone --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen; \
   cd /tmp/comfy-kitchen; \
-  /workspace/.venvs/comfyui-perf/bin/pip install --no-build-isolation .; \
+  /workspace/.venvs/comfyui-perf/bin/python setup.py build_ext --cuda-archs="89" install; \
   cd /; \
   rm -rf /tmp/comfy-kitchen
 
