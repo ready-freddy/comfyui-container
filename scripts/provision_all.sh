@@ -9,6 +9,9 @@ COMFY_DIR="${WORKSPACE}/ComfyUI"
 export CUDA_HOME="/usr/local/cuda"
 export TORCH_CUDA_ARCH_LIST="8.9;9.0"
 export LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
+export PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.8,max_split_size_mb:512"
+export COMFY_KITCHEN_DISABLE_CUDA=0
+export COMFY_KITCHEN_FORCE_TRITON=0
 
 log(){ printf '%s %s\n' "[$(date +'%Y-%m-%dT%H:%M:%S')]" "$*"; }
 
@@ -54,12 +57,20 @@ APP="${WORKSPACE}/ComfyUI/main.py"
 export CUDA_HOME="/usr/local/cuda"
 export TORCH_CUDA_ARCH_LIST="8.9;9.0"
 export LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
+export PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.8,max_split_size_mb:512"
+export COMFY_KITCHEN_DISABLE_CUDA=0
+export COMFY_KITCHEN_FORCE_TRITON=0
 
 case "$CMD" in
   start)
     LOG="${WORKSPACE}/logs/comfyui.$(date +%Y%m%dT%H%M%S).log"
     pkill -f "python.*ComfyUI/main.py" || true
-    nohup "${VENV}/bin/python" -u "$APP" --listen 0.0.0.0 --port "$PORT" >>"$LOG" 2>&1 &
+    nohup "${VENV}/bin/python" -u "$APP" \
+      --listen 0.0.0.0 \
+      --port "$PORT" \
+      --use-flash-attention \
+      --gpu-only \
+      >>"$LOG" 2>&1 &
     echo "started :$PORT (log $LOG)"
     ;;
   stop)
