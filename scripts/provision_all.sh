@@ -1,68 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ---- settings ----
 WORKSPACE="${WORKSPACE:-/workspace}"
 VENV_DIR="${WORKSPACE}/.venvs/comfyui-perf"
 COMFY_REPO="${COMFY_REPO:-https://github.com/comfyanonymous/ComfyUI.git}"
 COMFY_DIR="${WORKSPACE}/ComfyUI"
 
-TORCH_VERSION="${TORCH_VERSION:-2.8.0}"
-TV_VERSION="${TV_VERSION:-0.23.0}"
-TA_VERSION="${TA_VERSION:-2.8.0}"
-TRITON_VERSION="${TRITON_VERSION:-3.4.0}"
-ORT_VERSION="${ORT_VERSION:-1.18.1}"
-OPENCV_VERSION="${OPENCV_VERSION:-4.11.0.86}"
-
-# Ensure CUDA compat library paths and target archs are exported
-export TORCH_CUDA_ARCH_LIST="8.9;9.0"
 export CUDA_HOME="/usr/local/cuda"
+export TORCH_CUDA_ARCH_LIST="8.9;9.0"
 export LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
 log(){ printf '%s %s\n' "[$(date +'%Y-%m-%dT%H:%M:%S')]" "$*"; }
 
-# ---- ensure venv ----
-if [ ! -x "${VENV_DIR}/bin/python" ]; then
-  log "venv: creating ${VENV_DIR}"
-  python3 -m venv "${VENV_DIR}"
-fi
-
-# upgrade pip toolchain & lock setuptools<70 so pkg_resources is permanently preserved
-"${VENV_DIR}/bin/python" -m pip install --upgrade --timeout 300 \
-  pip wheel "setuptools<70" "packaging<25" comfyui-workflow-templates av >/dev/null
-
 PIP="${VENV_DIR}/bin/pip"
 
-# ---- PyTorch stack (CUDA 12.8) ----
-install_torch() {
-  log "pip: ensuring torch ${TORCH_VERSION}+cu128, torchvision ${TV_VERSION}+cu128, torchaudio ${TA_VERSION}+cu128"
-  "${PIP}" install --prefer-binary --timeout 600 \
-      --extra-index-url https://download.pytorch.org/whl/cu128 \
-      torch=="${TORCH_VERSION}+cu128" torchvision=="${TV_VERSION}+cu128" torchaudio=="${TA_VERSION}+cu128"
-}
-install_torch
-
-# Triton
-"${PIP}" install --prefer-binary --timeout 600 \
-  --extra-index-url https://download.pytorch.org/whl \
-  triton=="${TRITON_VERSION}" || log "triton optional: continuing"
-
-# Baseline libs
-"${PIP}" install --prefer-binary --timeout 600 \
-  onnxruntime-gpu=="${ORT_VERSION}" opencv-python-headless=="${OPENCV_VERSION}" \
-  fastapi uvicorn pydantic tqdm pillow requests >/dev/null
-
-# ---- 1. Hardware Attention Kernels (SageAttention + Flash-Attention + Comfy-Kitchen) ----
-log "pip: checking / installing SageAttention, Flash-Attention, and comfy-kitchen"
-"${PIP}" install --no-cache-dir --no-binary :all: sageattention || log "sageattention failed"
-"${PIP}" install --prefer-binary flash-attn --no-build-isolation || log "flash-attn failed"
-"${PIP}" install --prefer-binary comfy-kitchen || log "comfy-kitchen check passed"
-
-# ---- 2. Audio DSP & Voice Conversion Stack ----
-log "pip: ensuring clean audio libraries"
+# ---- Ensure audio libs are present ----
+log "pip: verifying audio and runtime requirements"
 "${PIP}" install --prefer-binary \
   sounddevice soundfile librosa==0.10.1 perth resemble-perth \
-  hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer
+  hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer >/dev/null
 
 # ---- ComfyUI repo (idempotent) ----
 if [ ! -d "${COMFY_DIR}/.git" ]; then
@@ -84,6 +40,8 @@ WORKSPACE="${WORKSPACE:-/workspace}"
 VENV="${WORKSPACE}/.venvs/comfyui-perf"
 APP="${WORKSPACE}/ComfyUI/main.py"
 
+export CUDA_HOME="/usr/local/cuda"
+export TORCH_CUDA_ARCH_LIST="8.9;9.0"
 export LD_LIBRARY_PATH="/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
 case "$CMD" in
@@ -114,25 +72,21 @@ esac
 EOS
 chmod +x "${COMFYCTL}"
 
-# ---- sanity check ----
+# ---- Sanity check ----
 "${VENV_DIR}/bin/python" - <<'PY' || true
 import torch
 print("--- GPU SANITY CHECK ---")
 print("PyTorch:", torch.__version__, "| CUDA:", torch.cuda.is_available())
 if torch.cuda.is_available():
-    print("GPU:", torch.cuda.get_device_name(0))
+    print("GPU:", torch.cuda.get_device_name(0), "| Capability:", torch.cuda.get_device_capability(0))
 try:
-    import sageattention; print("SageAttention: READY")
+    import comfy_kitchen; print("Comfy-Kitchen: READY (Source sm_89 Native)")
 except Exception as e:
-    print("SageAttention:", e)
+    print("Comfy-Kitchen:", e)
 try:
     import flash_attn; print("FlashAttention: READY")
 except Exception as e:
     print("FlashAttention:", e)
-try:
-    import sounddevice; print("SoundDevice (PortAudio): READY")
-except Exception as e:
-    print("SoundDevice:", e)
 PY
 
 log "provision: complete"
