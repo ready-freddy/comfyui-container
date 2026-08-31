@@ -4,7 +4,7 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CODE_SERVER_VERSION=4.92.2
 ARG NODE_VERSION=20.18.0
-ARG IMAGE_VERSION="v5.5.0"
+ARG IMAGE_VERSION="v5.6.0"
 
 # Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90) + Compiler Constraints
 ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
@@ -57,20 +57,29 @@ RUN set -eux; \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /opt/venvs/comfyui-perf/bin/pip install \
     triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
-    fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av \
+    fastapi uvicorn pydantic tqdm requests comfyui-frontend-package comfyui-workflow-templates av \
     sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer \
     sqlalchemy alembic comfy-aimdo blake3 demucs==4.0.1 comfy-kitchen \
-    rich==13.9.4 einops scipy tensorboard tensorboardX flatten-dict argbind julius randomname importlib-resources ffmpy pydub sox; \
+    rich==13.9.4 einops scipy tensorboard tensorboardX flatten-dict argbind julius randomname importlib-resources ffmpy pydub sox \
+    diskcache>=5.6.3 jinja2>=3.1.6; \
   /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation flash-attn; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0; \
+  CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 \
+    /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-build-isolation \
+    "llama-cpp-python @ git+https://github.com/JamePeng/llama-cpp-python.git"; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir \
+    "numpy==1.26.4" \
+    "pillow>=9.2.0,<12.0"
 
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/python -c "\
-import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs; \
-print('=== ALL NATIVE ACCELERATION & AUDIO WHEELS COMPILED & VERIFIED ===')"
+import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs, numpy as np; \
+from llama_cpp.llama_chat_format import Qwen3VLChatHandler, Llava15ChatHandler; \
+assert np.__version__ == '1.26.4', f'NumPy mismatch: {np.__version__}'; \
+print('=== ALL NATIVE ACCELERATION, AUDIO WHEELS & MULTIMODAL HANDLERS COMPILED & VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
