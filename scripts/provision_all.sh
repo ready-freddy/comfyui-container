@@ -12,7 +12,13 @@ fi
 # 2. Ensure model directories exist
 mkdir -p /workspace/ComfyUI/models/{checkpoints,clip,clip_vision,configs,controlnet,diffusers,embeddings,gligen,hypernetworks,loras,style_models,unet,upscale_models,vae,vae_approx}
 
-# 3. Ensure bin permissions
+# 3. Synchronize custom requirements cleanly via uv (fast resolver)
+if [[ -f "/workspace/requirements.custom.txt" ]]; then
+    echo "[PROVISION] Syncing custom requirements via uv..."
+    /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /workspace/requirements.custom.txt >> /workspace/logs/dependency_sync.log 2>&1 || true
+fi
+
+# 4. Ensure bin permissions
 if [[ -d "/workspace/bin" ]]; then
     chmod +x /workspace/bin/* 2>/dev/null || true
 fi
