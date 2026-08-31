@@ -69,10 +69,9 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0; \
   git clone --recurse-submodules https://github.com/JamePeng/llama-cpp-python.git /tmp/llama-cpp-python; \
-  cd /tmp/llama-cpp-python; \
   CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=89;90" \
   FORCE_CMAKE=1 \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps .; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps /tmp/llama-cpp-python; \
   rm -rf /tmp/llama-cpp-python; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir \
     "numpy==1.26.4" \
