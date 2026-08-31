@@ -4,7 +4,7 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CODE_SERVER_VERSION=4.92.2
 ARG NODE_VERSION=20.18.0
-ARG IMAGE_VERSION="v5.4.7"
+ARG IMAGE_VERSION="v5.5.0"
 
 # Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90) + Compiler Constraints
 ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
@@ -48,23 +48,27 @@ RUN set -eux; \
     | tar -xz -C /opt; \
   ln -sf /opt/code-server-${CODE_SERVER_VERSION}-linux-amd64/bin/code-server /usr/local/bin/code-server
 
-# --- 5. Virtualenv in Immutable /opt Layer (All Dependencies Pre-Baked) ---
+# --- 5. Virtualenv & Complete ML Stack Pre-Baked ---
 RUN set -eux; \
   python3 -m venv /opt/venvs/comfyui-perf; \
-  /opt/venvs/comfyui-perf/bin/pip install --upgrade pip wheel "setuptools<70" "packaging<25" nanobind cmake ninja; \
+  /opt/venvs/comfyui-perf/bin/pip install --upgrade pip wheel "setuptools<70" "packaging<25" nanobind cmake ninja uv; \
   /opt/venvs/comfyui-perf/bin/pip install --timeout 600 \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
-  /opt/venvs/comfyui-perf/bin/pip install triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
+  /opt/venvs/comfyui-perf/bin/pip install \
+    triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
     fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av \
     sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer \
-    sqlalchemy alembic comfy-aimdo blake3; \
-  /opt/venvs/comfyui-perf/bin/pip install --prefer-binary flash-attn --no-build-isolation || true
+    sqlalchemy alembic comfy-aimdo blake3 demucs==4.0.1; \
+  /opt/venvs/comfyui-perf/bin/pip install --prefer-binary flash-attn --no-build-isolation; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audio-codec==1.0.0
 
 # --- 6. Pre-bake Native Comfy-Kitchen ---
 RUN set -eux; \
   git clone --recursive --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen; \
-  cd /tmp/comfy-kitchen && /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation . || true; \
+  cd /tmp/comfy-kitchen && /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation .; \
   rm -rf /tmp/comfy-kitchen
 
 # --- 7. Runtime Toggles ---
