@@ -60,7 +60,7 @@ RUN set -eux; \
     fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av \
     sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer \
     sqlalchemy alembic comfy-aimdo blake3 demucs==4.0.1 comfy-kitchen \
-    flatten-dict argbind julius randomname importlib-resources ffmpy pydub tensorboardX sox; \
+    rich==13.9.4 einops scipy flatten-dict argbind julius randomname importlib-resources ffmpy pydub tensorboardX sox; \
   /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation flash-attn; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
