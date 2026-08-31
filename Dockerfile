@@ -13,6 +13,7 @@ ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
     TORCHINDUCTOR_COMPILE_THREADS=4 \
     OMP_NUM_THREADS=4 \
     CUDA_HOME="/usr/local/cuda" \
+    CUDA_PATH="/usr/local/cuda" \
     CUDACXX="/usr/local/cuda/bin/nvcc" \
     PATH="/opt/venvs/comfyui-perf/bin:/usr/local/cuda/bin:${PATH}" \
     LD_LIBRARY_PATH="/workspace/lib:/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
@@ -29,7 +30,8 @@ RUN set -eux; \
     portaudio19-dev libasound2-dev libjack-jackd2-dev libsamplerate0-dev \
     sox libsox-fmt-all ffmpeg \
     libopencv-core-dev libopencv-imgproc-dev libopencv-highgui-dev \
-    libopencv-videoio-dev libopenblas-dev libomp-dev libgl1-mesa-dev; \
+    libopencv-videoio-dev libopenblas-dev libomp-dev libgl1-mesa-dev \
+    libcurand-dev-12-8 libcublas-dev-12-8 libcusparse-dev-12-8; \
   rm -rf /var/lib/apt/lists/*
 
 # --- 2. Node 20 ---
@@ -67,8 +69,12 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0; \
-  CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=89;90" FORCE_CMAKE=1 \
-    /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-build-isolation \
+  CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=89;90" \
+  SKBUILD_CMAKE_DEFINE="GGML_CUDA=ON;CMAKE_CUDA_ARCHITECTURES=89;90" \
+  FORCE_CMAKE=1 \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --force-reinstall --no-build-isolation --no-deps \
+    --config-settings=cmake.define.GGML_CUDA=ON \
+    --config-settings=cmake.define.CMAKE_CUDA_ARCHITECTURES="89;90" \
     "llama-cpp-python @ git+https://github.com/JamePeng/llama-cpp-python.git"; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir \
     "numpy==1.26.4" \
@@ -77,10 +83,11 @@ RUN set -eux; \
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/python -c "\
-import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs, numpy as np, llama_cpp; \
+import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs, numpy as np, PIL, llama_cpp; \
 from llama_cpp.llama_chat_format import Qwen3VLChatHandler, Llava15ChatHandler; \
 assert np.__version__ == '1.26.4', f'NumPy mismatch: {np.__version__}'; \
-assert llama_cpp.llama_supports_gpu_offload(), 'llama-cpp-python built without CUDA GPU offload!'; \
+assert int(PIL.__version__.split('.')[0]) < 12, f'Pillow mismatch: {PIL.__version__}'; \
+assert llama_cpp.llama_supports_gpu_offload(), 'FATAL: llama-cpp-python built without CUDA GPU offload!'; \
 print('=== ALL NATIVE ACCELERATION, CUDA LLAMA-CPP & MULTIMODAL HANDLERS VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
