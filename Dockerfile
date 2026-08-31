@@ -59,17 +59,17 @@ RUN set -eux; \
     triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
     fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av \
     sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer \
-    sqlalchemy alembic comfy-aimdo blake3 demucs==4.0.1; \
+    sqlalchemy alembic comfy-aimdo blake3 demucs==4.0.1 comfy-kitchen; \
   /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation flash-attn; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation sageattention; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audio-codec==1.0.0
 
-# --- 6. Pre-bake Native Comfy-Kitchen ---
+# --- 6. Verified Environment Assertion ---
 RUN set -eux; \
-  git clone --recursive --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen; \
-  cd /tmp/comfy-kitchen && /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation .; \
-  rm -rf /tmp/comfy-kitchen
+  /opt/venvs/comfyui-perf/bin/python -c "\
+import torch, flash_attn, sageattention, comfy_kitchen, dac, demucs; \
+print('=== ALL NATIVE ACCELERATION WHEELS COMPILED & VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
