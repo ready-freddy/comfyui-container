@@ -53,7 +53,7 @@ RUN set -eux; \
 # --- 5. Virtualenv & Complete ML Stack Pre-Baked ---
 RUN set -eux; \
   python3 -m venv /opt/venvs/comfyui-perf; \
-  /opt/venvs/comfyui-perf/bin/pip install --upgrade pip wheel "setuptools<70" "packaging<25" scikit-build-core nanobind cmake ninja uv; \
+  /opt/venvs/comfyui-perf/bin/pip install --upgrade pip wheel setuptools packaging scikit-build-core nanobind cmake ninja uv; \
   /opt/venvs/comfyui-perf/bin/pip install --timeout 600 \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
@@ -68,13 +68,12 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0; \
+  git clone --recurse-submodules https://github.com/JamePeng/llama-cpp-python.git /tmp/llama-cpp-python; \
+  cd /tmp/llama-cpp-python; \
   CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=89;90" \
-  SKBUILD_CMAKE_DEFINE="GGML_CUDA=ON;CMAKE_CUDA_ARCHITECTURES=89;90" \
   FORCE_CMAKE=1 \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --force-reinstall --no-build-isolation --no-deps \
-    --config-settings=cmake.define.GGML_CUDA=ON \
-    --config-settings=cmake.define.CMAKE_CUDA_ARCHITECTURES="89;90" \
-    "llama-cpp-python @ git+https://github.com/JamePeng/llama-cpp-python.git"; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps .; \
+  rm -rf /tmp/llama-cpp-python; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir \
     "numpy==1.26.4" \
     "pillow>=9.2.0,<12.0"
