@@ -59,7 +59,8 @@ RUN set -eux; \
     triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
     fastapi uvicorn pydantic tqdm pillow requests comfyui-frontend-package comfyui-workflow-templates av \
     sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer \
-    sqlalchemy alembic comfy-aimdo blake3 demucs==4.0.1 comfy-kitchen; \
+    sqlalchemy alembic comfy-aimdo blake3 demucs==4.0.1 comfy-kitchen \
+    flatten-dict argbind julius randomname importlib-resources; \
   /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation flash-attn; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
