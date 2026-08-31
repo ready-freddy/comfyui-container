@@ -15,7 +15,6 @@ ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
     CUDA_HOME="/usr/local/cuda" \
     CUDA_PATH="/usr/local/cuda" \
     CUDACXX="/usr/local/cuda/bin/nvcc" \
-    CMAKE_CUDA_COMPILER="/usr/local/cuda/bin/nvcc" \
     PATH="/opt/venvs/comfyui-perf/bin:/usr/local/cuda/bin:${PATH}" \
     LD_LIBRARY_PATH="/workspace/lib:/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
@@ -70,11 +69,13 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0; \
   git clone --recurse-submodules https://github.com/JamePeng/llama-cpp-python.git /tmp/llama-cpp-python; \
-  CMAKE_ARGS="-DGGML_CUDA=ON -DLLAMA_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89;90 -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc" \
-  FORCE_CMAKE=1 \
-  GGML_CUDA=1 \
-  LLAMA_CUDA=1 \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps --no-build-isolation /tmp/llama-cpp-python; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps --no-build-isolation \
+    -Ccmake.define.GGML_CUDA=ON \
+    -Ccmake.define.LLAMA_CUDA=ON \
+    -Ccmake.define.CMAKE_CUDA_ARCHITECTURES="89;90" \
+    -Ccmake.define.CMAKE_CUDA_COMPILER="/usr/local/cuda/bin/nvcc" \
+    -Ccmake.define.CUDAToolkit_ROOT="/usr/local/cuda" \
+    /tmp/llama-cpp-python; \
   rm -rf /tmp/llama-cpp-python; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir \
     "numpy==1.26.4" \
