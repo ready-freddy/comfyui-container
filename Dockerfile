@@ -63,13 +63,13 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation flash-attn; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audio-codec==1.0.0
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0
 
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/python -c "\
-import torch, flash_attn, sageattention, comfy_kitchen, dac, demucs; \
-print('=== ALL NATIVE ACCELERATION WHEELS COMPILED & VERIFIED ===')"
+import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs; \
+print('=== ALL NATIVE ACCELERATION & AUDIO WHEELS COMPILED & VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
