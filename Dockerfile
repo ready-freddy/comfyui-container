@@ -30,8 +30,7 @@ RUN set -eux; \
     portaudio19-dev libasound2-dev libjack-jackd2-dev libsamplerate0-dev \
     sox libsox-fmt-all ffmpeg \
     libopencv-core-dev libopencv-imgproc-dev libopencv-highgui-dev \
-    libopencv-videoio-dev libopenblas-dev libomp-dev libgl1-mesa-dev \
-    libcurand-dev-12-8 libcublas-dev-12-8 libcusparse-dev-12-8; \
+    libopencv-videoio-dev libopenblas-dev libomp-dev libgl1-mesa-dev; \
   rm -rf /var/lib/apt/lists/*
 
 # --- 2. Node 20 ---
