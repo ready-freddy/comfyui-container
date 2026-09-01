@@ -54,7 +54,7 @@ RUN set -eux; \
 # --- 5. Virtualenv & Complete ML Stack Pre-Baked ---
 RUN set -eux; \
   python3 -m venv /opt/venvs/comfyui-perf; \
-  /opt/venvs/comfyui-perf/bin/pip install --upgrade pip wheel setuptools packaging scikit-build-core nanobind cmake ninja uv build; \
+  /opt/venvs/comfyui-perf/bin/pip install --upgrade pip wheel setuptools packaging scikit-build-core nanobind cmake ninja uv; \
   /opt/venvs/comfyui-perf/bin/pip install --timeout 600 \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
@@ -71,16 +71,14 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0; \
   git clone --recurse-submodules https://github.com/JamePeng/llama-cpp-python.git /tmp/llama-cpp-python; \
   cd /tmp/llama-cpp-python; \
-  GGML_CUDA=1 \
-  LLAMA_CUDA=1 \
-  CMAKE_ARGS="-DGGML_CUDA=ON -DLLAMA_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89;90 -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc" \
-  /opt/venvs/comfyui-perf/bin/python -m build --wheel --no-isolation \
-    -Ccmake.define.GGML_CUDA=ON \
-    -Ccmake.define.LLAMA_CUDA=ON \
-    -Ccmake.define.CMAKE_CUDA_ARCHITECTURES="89;90" \
-    -Ccmake.define.CMAKE_CUDA_COMPILER="/usr/local/cuda/bin/nvcc" \
-    -Ccmake.define.CUDAToolkit_ROOT="/usr/local/cuda"; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps dist/*.whl; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps --no-build-isolation \
+    --config-settings=cmake.define.GGML_CUDA=ON \
+    --config-settings=cmake.define.LLAMA_CUDA=ON \
+    --config-settings=cmake.define.CMAKE_CUDA_ARCHITECTURES="89;90" \
+    --config-settings=cmake.define.CMAKE_CUDA_COMPILER="/usr/local/cuda/bin/nvcc" \
+    --config-settings=cmake.define.CUDAToolkit_ROOT="/usr/local/cuda" \
+    --config-settings=cmake.verbose=true \
+    .; \
   cd /; \
   rm -rf /tmp/llama-cpp-python; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir \
