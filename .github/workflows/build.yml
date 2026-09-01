@@ -6,7 +6,7 @@ on:
       tag:
         description: "Docker tag to push (e.g., v5.4.0)"
         required: true
-        default: "v5.4.0"
+        default: "v5.5.2"
 
 permissions:
   contents: read
