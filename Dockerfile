@@ -63,10 +63,15 @@ RUN set -eux; \
     sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer \
     sqlalchemy alembic comfy-aimdo blake3 demucs==4.0.1 comfy-kitchen \
     rich==13.9.4 einops scipy tensorboard tensorboardX flatten-dict argbind julius randomname importlib-resources ffmpy pydub sox \
-    diskcache>=5.6.3 jinja2>=3.1.6; \
+    diskcache>=5.6.3 jinja2>=3.1.6 \
+    pygltflib==1.16.5 viser>=1.1.0; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps audio-separator; \
   /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation flash-attn; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
+    git+https://github.com/microsoft/VibeVoice.git \
+    git+https://github.com/apple/ml-sharp.git \
+    git+https://github.com/microsoft/MoGe.git; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
     "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.46-cu128-linux-20260808/llama_cpp_python-0.3.46+cu128-cp312-cp312-linux_x86_64.whl"; \
@@ -77,14 +82,14 @@ RUN set -eux; \
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/python -c "\
-import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib; \
+import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib, pygltflib, viser, sharp, moge, audio_separator; \
 from llama_cpp.llama_chat_format import Qwen3VLChatHandler, Llava15ChatHandler; \
 assert np.__version__ == '1.26.4', f'NumPy mismatch: {np.__version__}'; \
 assert int(PIL.__version__.split('.')[0]) < 12, f'Pillow mismatch: {PIL.__version__}'; \
 lib_dir = pathlib.Path(llama_cpp.__file__).parent / 'lib'; \
 cuda_libs = list(lib_dir.glob('*cuda*')); \
 assert len(cuda_libs) > 0 or llama_cpp.llama_supports_gpu_offload(), f'FATAL: CUDA libraries missing from {lib_dir}'; \
-print(f'=== ALL NATIVE ACCELERATION, CUDA LLAMA-CPP ({[p.name for p in cuda_libs]}) & MULTIMODAL HANDLERS VERIFIED ===')"
+print(f'=== ALL NATIVE ACCELERATION, CUDA LLAMA-CPP ({[p.name for p in cuda_libs]}), 3D & AUDIO SEPARATOR VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
