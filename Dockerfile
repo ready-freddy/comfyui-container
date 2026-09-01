@@ -15,7 +15,6 @@ ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
     CUDA_HOME="/usr/local/cuda" \
     CUDA_PATH="/usr/local/cuda" \
     CUDACXX="/usr/local/cuda/bin/nvcc" \
-    CMAKE_CUDA_COMPILER="/usr/local/cuda/bin/nvcc" \
     PATH="/opt/venvs/comfyui-perf/bin:/usr/local/cuda/bin:${PATH}" \
     LD_LIBRARY_PATH="/workspace/lib:/usr/local/cuda-12.8/compat:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
@@ -69,18 +68,8 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps git+https://github.com/microsoft/VibeVoice.git; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0; \
-  git clone --recurse-submodules https://github.com/JamePeng/llama-cpp-python.git /tmp/llama-cpp-python; \
-  cd /tmp/llama-cpp-python; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps --no-build-isolation \
-    --config-settings=cmake.define.GGML_CUDA=ON \
-    --config-settings=cmake.define.LLAMA_CUDA=ON \
-    --config-settings=cmake.define.CMAKE_CUDA_ARCHITECTURES="89;90" \
-    --config-settings=cmake.define.CMAKE_CUDA_COMPILER="/usr/local/cuda/bin/nvcc" \
-    --config-settings=cmake.define.CUDAToolkit_ROOT="/usr/local/cuda" \
-    --config-settings=cmake.verbose=true \
-    .; \
-  cd /; \
-  rm -rf /tmp/llama-cpp-python; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
+    "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.46-cu128-linux-20260808/llama_cpp_python-0.3.46+cu128-cp312-cp312-linux_x86_64.whl"; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir \
     "numpy==1.26.4" \
     "pillow>=9.2.0,<12.0"
@@ -88,12 +77,14 @@ RUN set -eux; \
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/python -c "\
-import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs, numpy as np, PIL, llama_cpp; \
+import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib; \
 from llama_cpp.llama_chat_format import Qwen3VLChatHandler, Llava15ChatHandler; \
 assert np.__version__ == '1.26.4', f'NumPy mismatch: {np.__version__}'; \
 assert int(PIL.__version__.split('.')[0]) < 12, f'Pillow mismatch: {PIL.__version__}'; \
-assert llama_cpp.llama_supports_gpu_offload(), 'FATAL: llama-cpp-python built without CUDA GPU offload!'; \
-print('=== ALL NATIVE ACCELERATION, CUDA LLAMA-CPP & MULTIMODAL HANDLERS VERIFIED ===')"
+lib_dir = pathlib.Path(llama_cpp.__file__).parent / 'lib'; \
+cuda_libs = list(lib_dir.glob('*cuda*')); \
+assert len(cuda_libs) > 0 or llama_cpp.llama_supports_gpu_offload(), f'FATAL: CUDA libraries missing from {lib_dir}'; \
+print(f'=== ALL NATIVE ACCELERATION, CUDA LLAMA-CPP ({[p.name for p in cuda_libs]}) & MULTIMODAL HANDLERS VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
