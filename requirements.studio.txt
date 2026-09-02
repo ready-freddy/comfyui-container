@@ -420,6 +420,3 @@ zstandard==0.25.0
 dashscope
 pygltflib==1.16.5
 viser>=1.1.0
-git+https://github.com/apple/ml-sharp.git
-git+https://github.com/microsoft/MoGe.git
-audio-separator>=0.30.0
