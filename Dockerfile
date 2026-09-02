@@ -4,6 +4,7 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CODE_SERVER_VERSION=4.92.2
 ARG NODE_VERSION=20.18.0
+ARG BLENDER_VERSION=4.2.3
 ARG IMAGE_VERSION="v5.6.2"
 
 # Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90) + Compiler Constraints
@@ -30,7 +31,8 @@ RUN set -eux; \
     portaudio19-dev libasound2-dev libjack-jackd2-dev libsamplerate0-dev \
     sox libsox-fmt-all ffmpeg \
     libopencv-core-dev libopencv-imgproc-dev libopencv-highgui-dev \
-    libopencv-videoio-dev libopenblas-dev libomp-dev libgl1-mesa-dev; \
+    libopencv-videoio-dev libopenblas-dev libomp-dev libgl1-mesa-dev \
+    xvfb libxkbcommon0 libxcursor1 libxi6 libxinerama1 libxrandr2; \
   rm -rf /var/lib/apt/lists/*
 
 # --- 2. Node 20 ---
@@ -50,17 +52,12 @@ RUN set -eux; \
     | tar -xz -C /opt; \
   ln -sf /opt/code-server-${CODE_SERVER_VERSION}-linux-amd64/bin/code-server /usr/local/bin/code-server
 
-# --- 4.1 Headless Blender 4.2 LTS & Headless Display Runtime ---
-ARG BLENDER_VERSION=4.2.3
+# --- 4.1 Headless Blender 4.2 LTS Integration ---
 RUN set -eux; \
-  apt-get update; \
-  apt-get install -y --no-install-recommends \
-    xvfb libxkbcommon0 libxcursor1 libxi6 libxinerama1 libxrandr2; \
   curl -fsSL "https://download.blender.org/release/Blender4.2/blender-${BLENDER_VERSION}-linux-x64.tar.xz" \
     | tar -xJ -C /opt; \
-  ln -sf /opt/blender-${BLENDER_VERSION}-linux-x64/blender /usr/local/bin/blender; \
-  rm -rf /var/lib/apt/lists/*
-  
+  ln -sf /opt/blender-${BLENDER_VERSION}-linux-x64/blender /usr/local/bin/blender
+
 # --- 5. Virtualenv & Complete Studio ML Stack Pre-Baked ---
 COPY requirements.studio.txt /tmp/requirements.studio.txt
 
@@ -88,15 +85,16 @@ RUN set -eux; \
 
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
+  blender --version; \
   /opt/venvs/comfyui-perf/bin/python -c "\
-import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib, pygltflib, viser, sharp, moge, audio_separator, diffusers, iopath, timm; \
+import torch, flash_attn, sageattention, comfy_kitchen, comfy_env, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib, pygltflib, viser, sharp, moge, audio_separator, diffusers, iopath, timm; \
 from llama_cpp.llama_chat_format import Qwen3VLChatHandler, Llava15ChatHandler; \
 assert np.__version__ == '1.26.4', f'NumPy mismatch: {np.__version__}'; \
 assert int(PIL.__version__.split('.')[0]) < 12, f'Pillow mismatch: {PIL.__version__}'; \
 lib_dir = pathlib.Path(llama_cpp.__file__).parent / 'lib'; \
 cuda_libs = list(lib_dir.glob('*cuda*')); \
 assert len(cuda_libs) > 0 or llama_cpp.llama_supports_gpu_offload(), f'FATAL: CUDA libraries missing from {lib_dir}'; \
-print(f'=== ALL NATIVE ACCELERATION, 3D, AUDIO & STUDIO REQUIREMENTS VERIFIED ===')"
+print(f'=== ALL NATIVE ACCELERATION, BLENDER, 3D, AUDIO & STUDIO REQUIREMENTS VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
