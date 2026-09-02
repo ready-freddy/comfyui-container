@@ -4,7 +4,7 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CODE_SERVER_VERSION=4.92.2
 ARG NODE_VERSION=20.18.0
-ARG IMAGE_VERSION="v5.6.0"
+ARG IMAGE_VERSION="v5.6.1"
 
 # Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90) + Compiler Constraints
 ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
@@ -59,6 +59,7 @@ RUN set -eux; \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /opt/venvs/comfyui-perf/bin/pip install \
     triton==3.4.0 onnxruntime-gpu==1.18.1 opencv-python-headless==4.11.0.86 \
+    safetensors aiohttp psutil pyyaml torchsde spandrel kornia transformers sentencepiece \
     fastapi uvicorn pydantic tqdm requests comfyui-frontend-package comfyui-workflow-templates av \
     sounddevice soundfile librosa==0.10.1 perth resemble-perth hyperpyyaml ruamel.yaml pyloudnorm conformer s3tokenizer \
     sqlalchemy alembic comfy-aimdo blake3 demucs==4.0.1 comfy-kitchen \
@@ -82,14 +83,14 @@ RUN set -eux; \
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/python -c "\
-import torch, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib, pygltflib, viser, sharp, moge, audio_separator; \
+import torch, safetensors, aiohttp, psutil, transformers, flash_attn, sageattention, comfy_kitchen, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib, pygltflib, viser, sharp, moge, audio_separator; \
 from llama_cpp.llama_chat_format import Qwen3VLChatHandler, Llava15ChatHandler; \
 assert np.__version__ == '1.26.4', f'NumPy mismatch: {np.__version__}'; \
 assert int(PIL.__version__.split('.')[0]) < 12, f'Pillow mismatch: {PIL.__version__}'; \
 lib_dir = pathlib.Path(llama_cpp.__file__).parent / 'lib'; \
 cuda_libs = list(lib_dir.glob('*cuda*')); \
 assert len(cuda_libs) > 0 or llama_cpp.llama_supports_gpu_offload(), f'FATAL: CUDA libraries missing from {lib_dir}'; \
-print(f'=== ALL NATIVE ACCELERATION, CUDA LLAMA-CPP ({[p.name for p in cuda_libs]}), 3D & AUDIO SEPARATOR VERIFIED ===')"
+print(f'=== ALL NATIVE ACCELERATION, COMFY CORE, CUDA LLAMA-CPP ({[p.name for p in cuda_libs]}), 3D & AUDIO SEPARATOR VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
