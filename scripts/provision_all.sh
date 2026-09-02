@@ -12,12 +12,10 @@ fi
 # 2. Ensure model directories exist
 mkdir -p /workspace/ComfyUI/models/{checkpoints,clip,clip_vision,configs,controlnet,diffusers,embeddings,gligen,hypernetworks,loras,style_models,unet,upscale_models,vae,vae_approx,LLM}
 
-# 3. Synchronize custom requirements cleanly without breaking pre-baked ABI
-if [[ -f "/workspace/requirements.custom.txt" ]]; then
-    echo "[PROVISION] Syncing custom requirements via uv..."
+# 3. Synchronize any experimental dependencies (if file is not empty)
+if [[ -s "/workspace/requirements.custom.txt" ]]; then
+    echo "[PROVISION] Syncing experimental requirements..."
     /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /workspace/requirements.custom.txt >> /workspace/logs/dependency_sync.log 2>&1 || true
-    
-    # Enforce locks in case any third-party node pulled an unconstrained dependency
     /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps "numpy==1.26.4" "pillow>=9.2.0,<12.0" >> /workspace/logs/dependency_sync.log 2>&1 || true
 fi
 
