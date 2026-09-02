@@ -60,13 +60,13 @@ RUN set -eux; \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /tmp/requirements.studio.txt; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps audio-separator; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation flash-attn; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
     git+https://github.com/microsoft/VibeVoice.git \
     git+https://github.com/apple/ml-sharp.git \
-    git+https://github.com/microsoft/MoGe.git; \
+    git+https://github.com/microsoft/MoGe.git \
+    audio-separator; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation flash-attn; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
     "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.46-cu128-linux-20260808/llama_cpp_python-0.3.46+cu128-cp312-cp312-linux_x86_64.whl"; \
