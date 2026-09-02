@@ -421,3 +421,5 @@ dashscope
 pygltflib==1.16.5
 viser>=1.1.0
 comfy-kitchen
+plyfile==1.1.1
+gsplat
