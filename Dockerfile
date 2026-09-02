@@ -50,6 +50,17 @@ RUN set -eux; \
     | tar -xz -C /opt; \
   ln -sf /opt/code-server-${CODE_SERVER_VERSION}-linux-amd64/bin/code-server /usr/local/bin/code-server
 
+# --- 4.1 Headless Blender 4.2 LTS & Headless Display Runtime ---
+ARG BLENDER_VERSION=4.2.3
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+    xvfb libxkbcommon0 libxcursor1 libxi6 libxinerama1 libxrandr2; \
+  curl -fsSL "https://download.blender.org/release/Blender4.2/blender-${BLENDER_VERSION}-linux-x64.tar.xz" \
+    | tar -xJ -C /opt; \
+  ln -sf /opt/blender-${BLENDER_VERSION}-linux-x64/blender /usr/local/bin/blender; \
+  rm -rf /var/lib/apt/lists/*
+  
 # --- 5. Virtualenv & Complete Studio ML Stack Pre-Baked ---
 COPY requirements.studio.txt /tmp/requirements.studio.txt
 
