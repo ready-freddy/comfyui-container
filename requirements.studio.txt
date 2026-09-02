@@ -420,3 +420,4 @@ zstandard==0.25.0
 dashscope
 pygltflib==1.16.5
 viser>=1.1.0
+comfy-kitchen
