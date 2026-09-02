@@ -423,3 +423,4 @@ viser>=1.1.0
 comfy-kitchen
 plyfile==1.1.1
 gsplat
+pillow-heif
