@@ -382,7 +382,7 @@ tqdm==4.70.0
 traitlets==5.16.1
 trampoline==0.1.2
 transformers==5.16.1
-trimesh==5.0.0
+trimesh>=4.5.0,<5.0.0
 truststore==0.10.4
 typeguard==4.6.0
 typer==0.27.2
