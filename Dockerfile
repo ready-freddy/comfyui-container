@@ -5,9 +5,9 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG CODE_SERVER_VERSION=4.92.2
 ARG NODE_VERSION=20.18.0
 ARG BLENDER_VERSION=4.2.3
-ARG IMAGE_VERSION="v5.6.5"
+ARG IMAGE_VERSION="v5.7.0"
 
-# Target Ada Lovelace (L40S sm_89) and Hopper (H200 sm_90) + Compiler Constraints
+# Target Ada Lovelace (L40S / RTX 6000 Ada sm_89) and Hopper (H200 sm_90)
 ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
     PYTHONUNBUFFERED=1 \
     MAX_JOBS=4 \
@@ -69,6 +69,7 @@ RUN set -eux; \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /tmp/requirements.studio.txt; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
+    git+https://github.com/facebookresearch/sam3.git \
     git+https://github.com/microsoft/VibeVoice.git \
     git+https://github.com/apple/ml-sharp.git \
     git+https://github.com/microsoft/MoGe.git \
@@ -87,14 +88,14 @@ RUN set -eux; \
 RUN set -eux; \
   blender --version; \
   /opt/venvs/comfyui-perf/bin/python -c "\
-import torch, flash_attn, sageattention, comfy_kitchen, comfy_env, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib, pygltflib, viser, sharp, moge, audio_separator, diffusers, iopath, timm, plyfile, cv2; \
+import torch, flash_attn, sageattention, comfy_kitchen, comfy_env, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib, pygltflib, viser, sharp, moge, audio_separator, diffusers, iopath, timm, plyfile, cv2, sam3; \
 from llama_cpp.llama_chat_format import Qwen3VLChatHandler, Llava15ChatHandler; \
 assert np.__version__ == '1.26.4', f'NumPy mismatch: {np.__version__}'; \
 assert int(PIL.__version__.split('.')[0]) < 12, f'Pillow mismatch: {PIL.__version__}'; \
 lib_dir = pathlib.Path(llama_cpp.__file__).parent / 'lib'; \
 cuda_libs = list(lib_dir.glob('*cuda*')); \
 assert len(cuda_libs) > 0 or llama_cpp.llama_supports_gpu_offload(), f'FATAL: CUDA libraries missing from {lib_dir}'; \
-print(f'=== ALL NATIVE ACCELERATION, OPENCV, PLYFILE, BLENDER, 3D, AUDIO & STUDIO REQUIREMENTS VERIFIED ===')"
+print(f'=== ALL NATIVE ACCELERATION, SAM3, OPENCV, PLYFILE, BLENDER, 3D, AUDIO & STUDIO REQUIREMENTS VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
