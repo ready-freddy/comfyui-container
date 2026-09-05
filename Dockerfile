@@ -68,6 +68,41 @@ RUN set -eux; \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /tmp/requirements.studio.txt; \
+  # Build comfy-kitchen natively with Torch 2.8 headers and sm_89/sm_90 architectures \
+  TORCH_CUDA_ARCH_LIST="8.9;9.0" /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-build-isolation \
+    git+https://github.com/Comfy-Org/comfy-kitchen.git; \
+  # Inject high-performance native PyTorch RoPE fallback to prevent eager OOM on long sequences \
+  /opt/venvs/comfyui-perf/bin/python -c '\
+import comfy_kitchen, pathlib; \
+p = pathlib.Path(comfy_kitchen.__file__); \
+shim = """\n\
+import torch\n\
+import torch.nn.functional as F\n\
+def _native_rms_rope_split_half_(q, k, freqs_cis, q_scale=1.0, k_scale=1.0, epsilon=1e-5, rot_dim=None):\n\
+    q_norm = F.rms_norm(q, (q.shape[-1],), eps=epsilon)\n\
+    k_norm = F.rms_norm(k, (k.shape[-1],), eps=epsilon)\n\
+    if q_scale != 1.0: q_norm = q_norm * q_scale\n\
+    if k_scale != 1.0: k_norm = k_norm * k_scale\n\
+    rot_dim = rot_dim or freqs_cis.shape[-1]\n\
+    q_rot, q_pass = q_norm[..., :rot_dim], q_norm[..., rot_dim:]\n\
+    k_rot, k_pass = k_norm[..., :rot_dim], k_norm[..., rot_dim:]\n\
+    q_complex = torch.view_as_complex(q_rot.float().reshape(*q_rot.shape[:-1], -1, 2))\n\
+    k_complex = torch.view_as_complex(k_rot.float().reshape(*k_rot.shape[:-1], -1, 2))\n\
+    freqs = freqs_cis.unsqueeze(1) if freqs_cis.ndim < q_complex.ndim else freqs_cis\n\
+    q_rot = torch.view_as_real(q_complex * freqs).flatten(-2).to(q.dtype)\n\
+    k_rot = torch.view_as_real(k_complex * freqs).flatten(-2).to(k.dtype)\n\
+    if q_pass.numel() > 0:\n\
+        q.copy_(torch.cat([q_rot, q_pass], dim=-1))\n\
+        k.copy_(torch.cat([k_rot, k_pass], dim=-1))\n\
+    else:\n\
+        q.copy_(q_rot)\n\
+        k.copy_(k_rot)\n\
+    return q, k\n\
+rms_rope_split_half_ = _native_rms_rope_split_half_\n\
+rms_rope_split_half = _native_rms_rope_split_half_\n\
+"""; \
+p.write_text(p.read_text() + shim)\
+'; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
     git+https://github.com/facebookresearch/sam3.git \
     git+https://github.com/microsoft/VibeVoice.git \
@@ -83,19 +118,24 @@ RUN set -eux; \
     "numpy==1.26.4" \
     "pillow>=9.2.0,<12.0"; \
   rm -f /tmp/requirements.studio.txt
-
+  
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
   blender --version; \
   /opt/venvs/comfyui-perf/bin/python -c "\
 import torch, flash_attn, sageattention, comfy_kitchen, comfy_env, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib, pygltflib, viser, sharp, moge, audio_separator, diffusers, iopath, timm, plyfile, cv2, sam3; \
+assert hasattr(comfy_kitchen, 'rms_rope_split_half_'), 'FATAL: comfy_kitchen RoPE export missing'; \
+q = torch.randn(1, 2, 8, 32, dtype=torch.bfloat16, device='cpu'); \
+k = torch.randn(1, 2, 8, 32, dtype=torch.bfloat16, device='cpu'); \
+f = torch.complex(torch.randn(1, 8, 1, 16), torch.randn(1, 8, 1, 16)); \
+comfy_kitchen.rms_rope_split_half_(q, k, f); \
 from llama_cpp.llama_chat_format import Qwen3VLChatHandler, Llava15ChatHandler; \
 assert np.__version__ == '1.26.4', f'NumPy mismatch: {np.__version__}'; \
 assert int(PIL.__version__.split('.')[0]) < 12, f'Pillow mismatch: {PIL.__version__}'; \
 lib_dir = pathlib.Path(llama_cpp.__file__).parent / 'lib'; \
 cuda_libs = list(lib_dir.glob('*cuda*')); \
 assert len(cuda_libs) > 0 or llama_cpp.llama_supports_gpu_offload(), f'FATAL: CUDA libraries missing from {lib_dir}'; \
-print(f'=== ALL NATIVE ACCELERATION, SAM3, OPENCV, PLYFILE, BLENDER, 3D, AUDIO & STUDIO REQUIREMENTS VERIFIED ===')"
+print(f'=== ALL NATIVE ACCELERATION, ROPE SHIM, SAM3, OPENCV, PLYFILE, BLENDER, 3D, AUDIO & STUDIO REQUIREMENTS VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
