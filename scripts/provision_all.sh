@@ -45,6 +45,17 @@ if [[ -d "/workspace/bin" ]]; then
     chmod +x /workspace/bin/* 2>/dev/null || true
 fi
 
+# Append to scripts/provision_all.sh before Section 6:
+
+# 5.1 Ensure comfy_kitchen does not degrade to un-fused eager RoPE
+/opt/venvs/comfyui-perf/bin/python -c "
+import comfy_kitchen as ck, pathlib
+p = pathlib.Path(ck.__file__)
+if '_native_rms_rope_split_half_' not in p.read_text():
+    print('[PROVISION] Applying native RoPE shim to comfy_kitchen...')
+    p.write_text(p.read_text() + '\nimport torch\nimport torch.nn.functional as F\ndef _native_rms_rope_split_half_(q, k, freqs_cis, q_scale=1.0, k_scale=1.0, epsilon=1e-5, rot_dim=None):\n    q_norm = F.rms_norm(q, (q.shape[-1],), eps=epsilon)\n    k_norm = F.rms_norm(k, (k.shape[-1],), eps=epsilon)\n    rot_dim = rot_dim or freqs_cis.shape[-1]\n    q_rot, q_pass = q_norm[..., :rot_dim], q_norm[..., rot_dim:]\n    k_rot, k_pass = k_norm[..., :rot_dim], k_norm[..., rot_dim:]\n    q_complex = torch.view_as_complex(q_rot.float().reshape(*q_rot.shape[:-1], -1, 2))\n    k_complex = torch.view_as_complex(k_rot.float().reshape(*k_rot.shape[:-1], -1, 2))\n    freqs = freqs_cis.unsqueeze(1) if freqs_cis.ndim < q_complex.ndim else freqs_cis\n    q_rot = torch.view_as_real(q_complex * freqs).flatten(-2).to(q.dtype)\n    k_rot = torch.view_as_real(k_complex * freqs).flatten(-2).to(k.dtype)\n    if q_pass.numel() > 0: q.copy_(torch.cat([q_rot, q_pass], dim=-1)); k.copy_(torch.cat([k_rot, k_pass], dim=-1))\n    else: q.copy_(q_rot); k.copy_(k_rot)\n    return q, k\nrms_rope_split_half_ = _native_rms_rope_split_half_\nrms_rope_split_half = _native_rms_rope_split_half_\n')
+" >> /workspace/logs/boot_verification.log 2>&1 || true
+
 # 6. Boot Assertion Log & Strict ABI Verification
 /opt/venvs/comfyui-perf/bin/python -c "
 import numpy as np, llama_cpp, cv2, plyfile, sam3
