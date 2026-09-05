@@ -72,9 +72,20 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/python -c '\
 import comfy_kitchen, pathlib; \
 p = pathlib.Path(comfy_kitchen.__file__); \
-shim = """\n\
+patch = """\n\
 import torch\n\
 import torch.nn.functional as F\n\
+import comfy_kitchen as _ck\n\
+\n\
+DTYPE_CODE_TO_TORCH = {0: torch.float32, 1: torch.float16, 2: torch.bfloat16}\n\
+\n\
+def _native_dequantize_per_tensor_fp8(x, scale, dtype):\n\
+    target_dtype = DTYPE_CODE_TO_TORCH.get(dtype, dtype) if isinstance(dtype, int) else dtype\n\
+    if scale is None: return x.to(target_dtype)\n\
+    return (x.to(torch.float32) * scale).to(target_dtype)\n\
+\n\
+_ck.dequantize_per_tensor_fp8 = _native_dequantize_per_tensor_fp8\n\
+dequantize_per_tensor_fp8 = _native_dequantize_per_tensor_fp8\n\
 \n\
 def _native_rms_rope_split_half_(q, k, freqs_cis, q_scale=1.0, k_scale=1.0, epsilon=1e-5, rot_dim=None):\n\
     q_norm = F.rms_norm(q, (q.shape[-1],), eps=epsilon)\n\
@@ -85,31 +96,33 @@ def _native_rms_rope_split_half_(q, k, freqs_cis, q_scale=1.0, k_scale=1.0, epsi
     q_rot, q_pass = q_norm[..., :rot_dim], q_norm[..., rot_dim:]\n\
     k_rot, k_pass = k_norm[..., :rot_dim], k_norm[..., rot_dim:]\n\
     freqs = freqs_cis\n\
-    while freqs.ndim < q_rot.ndim: freqs = freqs.unsqueeze(1)\n\
+    if freqs.ndim == 3 and q_rot.ndim == 4:\n\
+        freqs = freqs.unsqueeze(1)\n\
+    elif freqs.ndim == 4 and q_rot.ndim == 4 and freqs.shape[1] != q_rot.shape[1] and freqs.shape[2] == 1:\n\
+        freqs = freqs.transpose(1, 2)\n\
+    while freqs.ndim < q_rot.ndim:\n\
+        freqs = freqs.unsqueeze(1)\n\
     if torch.is_complex(freqs):\n\
         q_c = torch.view_as_complex(q_rot.float().reshape(*q_rot.shape[:-1], -1, 2))\n\
         k_c = torch.view_as_complex(k_rot.float().reshape(*k_rot.shape[:-1], -1, 2))\n\
         q_rot = torch.view_as_real(q_c * freqs).flatten(-2).to(q.dtype)\n\
         k_rot = torch.view_as_real(k_c * freqs).flatten(-2).to(k.dtype)\n\
     else:\n\
-        cos = freqs.cos().to(dtype=q.dtype)\n\
-        sin = freqs.sin().to(dtype=q.dtype)\n\
-        q1, q2 = q_rot.chunk(2, dim=-1)\n\
-        k1, k2 = k_rot.chunk(2, dim=-1)\n\
+        cos = freqs.cos().to(dtype=q.dtype); sin = freqs.sin().to(dtype=q.dtype)\n\
+        q1, q2 = q_rot.chunk(2, dim=-1); k1, k2 = k_rot.chunk(2, dim=-1)\n\
         q_rot = torch.cat([q1 * cos - q2 * sin, q1 * sin + q2 * cos], dim=-1)\n\
         k_rot = torch.cat([k1 * cos - k2 * sin, k1 * sin + k2 * cos], dim=-1)\n\
     if q_pass.numel() > 0:\n\
-        q.copy_(torch.cat([q_rot, q_pass], dim=-1))\n\
-        k.copy_(torch.cat([k_rot, k_pass], dim=-1))\n\
-    else:\n\
-        q.copy_(q_rot)\n\
-        k.copy_(k_rot)\n\
+        q.copy_(torch.cat([q_rot, q_pass], dim=-1)); k.copy_(torch.cat([k_rot, k_pass], dim=-1))\n\
+    else: q.copy_(q_rot); k.copy_(k_rot)\n\
     return q, k\n\
 \n\
+_ck.rms_rope_split_half_ = _native_rms_rope_split_half_\n\
+_ck.rms_rope_split_half = _native_rms_rope_split_half_\n\
 rms_rope_split_half_ = _native_rms_rope_split_half_\n\
 rms_rope_split_half = _native_rms_rope_split_half_\n\
 """; \
-p.write_text(p.read_text() + shim)\
+p.write_text(p.read_text() + patch)\
 '; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
     git+https://github.com/facebookresearch/sam3.git \
@@ -132,18 +145,27 @@ RUN set -eux; \
   blender --version; \
   /opt/venvs/comfyui-perf/bin/python -c "\
 import torch, flash_attn, sageattention, comfy_kitchen, comfy_env, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib, pygltflib, viser, sharp, moge, audio_separator, diffusers, iopath, timm, plyfile, cv2, sam3; \
-assert hasattr(comfy_kitchen, 'rms_rope_split_half_'), 'FATAL: comfy_kitchen RoPE export missing'; \
-q = torch.randn(1, 4, 16, 64, dtype=torch.bfloat16); \
-k = torch.randn(1, 4, 16, 64, dtype=torch.bfloat16); \
-f = torch.complex(torch.randn(1, 16, 1, 32), torch.randn(1, 16, 1, 32)); \
-comfy_kitchen.rms_rope_split_half_(q, k, f); \
+assert hasattr(comfy_kitchen, 'rms_rope_split_half_'), 'FATAL: RoPE export missing'; \
+assert hasattr(comfy_kitchen, 'dequantize_per_tensor_fp8'), 'FATAL: FP8 dequant missing'; \
+q1 = torch.randn(1, 388, 16, 64, dtype=torch.bfloat16); \
+k1 = torch.randn(1, 388, 16, 64, dtype=torch.bfloat16); \
+f1 = torch.complex(torch.randn(1, 388, 1, 32), torch.randn(1, 388, 1, 32)); \
+comfy_kitchen.rms_rope_split_half_(q1, k1, f1); \
+q2 = torch.randn(1, 4, 16, 64, dtype=torch.bfloat16); \
+k2 = torch.randn(1, 4, 16, 64, dtype=torch.bfloat16); \
+f2 = torch.complex(torch.randn(1, 16, 1, 32), torch.randn(1, 16, 1, 32)); \
+comfy_kitchen.rms_rope_split_half_(q2, k2, f2); \
+x = torch.zeros((4, 4), dtype=torch.float8_e4m3fn); \
+s = torch.tensor(1.0); \
+out = comfy_kitchen.dequantize_per_tensor_fp8(x, s, torch.bfloat16); \
+assert out.shape == (4, 4) and out.dtype == torch.bfloat16; \
 from llama_cpp.llama_chat_format import Qwen3VLChatHandler, Llava15ChatHandler; \
 assert np.__version__ == '1.26.4', f'NumPy mismatch: {np.__version__}'; \
 assert int(PIL.__version__.split('.')[0]) < 12, f'Pillow mismatch: {PIL.__version__}'; \
 lib_dir = pathlib.Path(llama_cpp.__file__).parent / 'lib'; \
 cuda_libs = list(lib_dir.glob('*cuda*')); \
 assert len(cuda_libs) > 0 or llama_cpp.llama_supports_gpu_offload(), f'FATAL: CUDA libraries missing from {lib_dir}'; \
-print(f'=== ALL NATIVE ACCELERATION, ROPE SHIM, SAM3, OPENCV, PLYFILE, BLENDER, 3D, AUDIO & STUDIO REQUIREMENTS VERIFIED ===')"
+print(f'=== ALL NATIVE ACCELERATION, ROPE SHIM, FP8 DEQUANT, SAM3, BLENDER & STUDIO STACK VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
