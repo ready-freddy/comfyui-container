@@ -70,9 +70,9 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /tmp/requirements.studio.txt; \
   git clone --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen; \
   cd /tmp/comfy-kitchen; \
-  CUDA_HOME=/usr/local/cuda \
-  TORCH_CUDA_ARCH_LIST="8.9;9.0" \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-build-isolation .; \
+  CUDA_HOME=/usr/local/cuda
+  TORCH_CUDA_ARCH_LIST="8.9;9.0"
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-build-isolation -v .; \
   cd /; \
   rm -rf /tmp/comfy-kitchen; \
   /opt/venvs/comfyui-perf/bin/python -c '\
