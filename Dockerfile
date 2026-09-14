@@ -68,7 +68,9 @@ RUN set -eux; \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /tmp/requirements.studio.txt; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps comfy-kitchen; \
+  CUDA_HOME=/usr/local/cuda \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-build-isolation --force-reinstall \
+    git+https://github.com/Comfy-Org/comfy-kitchen.git; \
   /opt/venvs/comfyui-perf/bin/python -c '\
 import comfy_kitchen, pathlib; \
 p = pathlib.Path(comfy_kitchen.__file__); \
