@@ -60,6 +60,7 @@ RUN set -eux; \
 
 # --- 5. Virtualenv & Complete Studio ML Stack Pre-Baked ---
 COPY requirements.studio.txt /tmp/requirements.studio.txt
+COPY scripts/patch_comfy_kitchen.py /tmp/patch_comfy_kitchen.py
 
 RUN set -eux; \
   python3 -m venv /opt/venvs/comfyui-perf; \
@@ -69,67 +70,7 @@ RUN set -eux; \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /tmp/requirements.studio.txt; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps comfy-kitchen; \
-  /opt/venvs/comfyui-perf/bin/python -c '\
-import comfy_kitchen, pathlib; \
-p = pathlib.Path(comfy_kitchen.__file__); \
-patch = """\n\
-import torch\n\
-import torch.nn.functional as F\n\
-import comfy_kitchen as _ck\n\
-\n\
-DTYPE_CODE_TO_TORCH = {0: torch.float32, 1: torch.float16, 2: torch.bfloat16}\n\
-\n\
-def _native_dequantize_per_tensor_fp8(x, scale, dtype):\n\
-    target_dtype = DTYPE_CODE_TO_TORCH.get(dtype, dtype) if isinstance(dtype, int) else dtype\n\
-    if scale is None: return x.to(target_dtype)\n\
-    return (x.to(torch.float32) * scale).to(target_dtype)\n\
-\n\
-_ck.dequantize_per_tensor_fp8 = _native_dequantize_per_tensor_fp8\n\
-dequantize_per_tensor_fp8 = _native_dequantize_per_tensor_fp8\n\
-\n\
-def _native_stochastic_rounding_fp8(tensor, dtype=torch.float8_e4m3fn, seed=None):\n\
-    return tensor.to(dtype)\n\
-\n\
-_ck.stochastic_rounding_fp8 = _native_stochastic_rounding_fp8\n\
-stochastic_rounding_fp8 = _native_stochastic_rounding_fp8\n\
-\n\
-def _native_rms_rope_split_half_(q, k, freqs_cis, q_scale=1.0, k_scale=1.0, epsilon=1e-5, rot_dim=None):\n\
-    q_norm = F.rms_norm(q, (q.shape[-1],), eps=epsilon)\n\
-    k_norm = F.rms_norm(k, (k.shape[-1],), eps=epsilon)\n\
-    if q_scale != 1.0: q_norm = q_norm * q_scale\n\
-    if k_scale != 1.0: k_norm = k_norm * k_scale\n\
-    rot_dim = rot_dim or (freqs_cis.shape[-1] * 2 if torch.is_complex(freqs_cis) else freqs_cis.shape[-1])\n\
-    q_rot, q_pass = q_norm[..., :rot_dim], q_norm[..., rot_dim:]\n\
-    k_rot, k_pass = k_norm[..., :rot_dim], k_norm[..., rot_dim:]\n\
-    freqs = freqs_cis\n\
-    if freqs.ndim == 3 and q_rot.ndim == 4:\n\
-        freqs = freqs.unsqueeze(1)\n\
-    elif freqs.ndim == 4 and q_rot.ndim == 4 and freqs.shape[1] != q_rot.shape[1] and freqs.shape[2] == 1:\n\
-        freqs = freqs.transpose(1, 2)\n\
-    while freqs.ndim < q_rot.ndim:\n\
-        freqs = freqs.unsqueeze(1)\n\
-    if torch.is_complex(freqs):\n\
-        q_c = torch.view_as_complex(q_rot.float().reshape(*q_rot.shape[:-1], -1, 2))\n\
-        k_c = torch.view_as_complex(k_rot.float().reshape(*k_rot.shape[:-1], -1, 2))\n\
-        q_rot = torch.view_as_real(q_c * freqs).flatten(-2).to(q.dtype)\n\
-        k_rot = torch.view_as_real(k_c * freqs).flatten(-2).to(k.dtype)\n\
-    else:\n\
-        cos = freqs.cos().to(dtype=q.dtype); sin = freqs.sin().to(dtype=q.dtype)\n\
-        q1, q2 = q_rot.chunk(2, dim=-1); k1, k2 = k_rot.chunk(2, dim=-1)\n\
-        q_rot = torch.cat([q1 * cos - q2 * sin, q1 * sin + q2 * cos], dim=-1)\n\
-        k_rot = torch.cat([k1 * cos - k2 * sin, k1 * sin + k2 * cos], dim=-1)\n\
-    if q_pass.numel() > 0:\n\
-        q.copy_(torch.cat([q_rot, q_pass], dim=-1)); k.copy_(torch.cat([k_rot, k_pass], dim=-1))\n\
-    else: q.copy_(q_rot); k.copy_(k_rot)\n\
-    return q, k\n\
-\n\
-_ck.rms_rope_split_half_ = _native_rms_rope_split_half_\n\
-_ck.rms_rope_split_half = _native_rms_rope_split_half_\n\
-rms_rope_split_half_ = _native_rms_rope_split_half_\n\
-rms_rope_split_half = _native_rms_rope_split_half_\n\
-"""; \
-p.write_text(p.read_text() + patch)\
-'; \
+  /opt/venvs/comfyui-perf/bin/python /tmp/patch_comfy_kitchen.py; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
     git+https://github.com/facebookresearch/sam3.git \
     git+https://github.com/microsoft/VibeVoice.git \
@@ -144,7 +85,7 @@ p.write_text(p.read_text() + patch)\
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --force-reinstall --no-deps \
     "numpy==1.26.4" \
     "pillow>=9.2.0,<12.0"; \
-  rm -f /tmp/requirements.studio.txt
+  rm -f /tmp/requirements.studio.txt /tmp/patch_comfy_kitchen.py
 
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
