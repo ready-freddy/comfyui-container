@@ -68,13 +68,7 @@ RUN set -eux; \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128; \
   /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /tmp/requirements.studio.txt; \
-  git clone --depth 1 https://github.com/Comfy-Org/comfy-kitchen.git /tmp/comfy-kitchen; \
-  cd /tmp/comfy-kitchen; \
-  CUDA_HOME=/usr/local/cuda
-  TORCH_CUDA_ARCH_LIST="8.9;9.0"
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-build-isolation -v .; \
-  cd /; \
-  rm -rf /tmp/comfy-kitchen; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps comfy-kitchen; \
   /opt/venvs/comfyui-perf/bin/python -c '\
 import comfy_kitchen, pathlib; \
 p = pathlib.Path(comfy_kitchen.__file__); \
@@ -92,6 +86,12 @@ def _native_dequantize_per_tensor_fp8(x, scale, dtype):\n\
 \n\
 _ck.dequantize_per_tensor_fp8 = _native_dequantize_per_tensor_fp8\n\
 dequantize_per_tensor_fp8 = _native_dequantize_per_tensor_fp8\n\
+\n\
+def _native_stochastic_rounding_fp8(tensor, dtype=torch.float8_e4m3fn, seed=None):\n\
+    return tensor.to(dtype)\n\
+\n\
+_ck.stochastic_rounding_fp8 = _native_stochastic_rounding_fp8\n\
+stochastic_rounding_fp8 = _native_stochastic_rounding_fp8\n\
 \n\
 def _native_rms_rope_split_half_(q, k, freqs_cis, q_scale=1.0, k_scale=1.0, epsilon=1e-5, rot_dim=None):\n\
     q_norm = F.rms_norm(q, (q.shape[-1],), eps=epsilon)\n\
