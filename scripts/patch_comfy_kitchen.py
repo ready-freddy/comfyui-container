@@ -3,6 +3,19 @@ import torch
 import torch.nn.functional as F
 import comfy_kitchen
 
+# --- 1. Patch torch._scaled_mm to accept uint8 Byte storage ---
+_orig_scaled_mm = torch._scaled_mm
+
+def _safe_scaled_mm(mat1, mat2, *args, **kwargs):
+    if isinstance(mat2, torch.Tensor) and mat2.dtype == torch.uint8:
+        mat2 = mat2.view(torch.float8_e4m3fn)
+    if isinstance(mat1, torch.Tensor) and mat1.dtype == torch.uint8:
+        mat1 = mat1.view(torch.float8_e4m3fn)
+    return _orig_scaled_mm(mat1, mat2, *args, **kwargs)
+
+torch._scaled_mm = _safe_scaled_mm
+
+# --- 2. Patch comfy_kitchen native math shims ---
 p = pathlib.Path(comfy_kitchen.__file__)
 
 patch_code = """
@@ -12,14 +25,32 @@ import comfy_kitchen as _ck
 
 DTYPE_CODE_TO_TORCH = {0: torch.float32, 1: torch.float16, 2: torch.bfloat16}
 
+# Fix Byte inputs to hardware GEMM
+_orig_torch_scaled_mm = torch._scaled_mm
+def _safe_torch_scaled_mm(mat1, mat2, *args, **kwargs):
+    if isinstance(mat2, torch.Tensor) and mat2.dtype == torch.uint8:
+        mat2 = mat2.view(torch.float8_e4m3fn)
+    if isinstance(mat1, torch.Tensor) and mat1.dtype == torch.uint8:
+        mat1 = mat1.view(torch.float8_e4m3fn)
+    return _orig_torch_scaled_mm(mat1, mat2, *args, **kwargs)
+torch._scaled_mm = _safe_torch_scaled_mm
+
 def _native_dequantize_per_tensor_fp8(x, scale, dtype):
     target_dtype = DTYPE_CODE_TO_TORCH.get(dtype, dtype) if isinstance(dtype, int) else dtype
+    if x.dtype == torch.uint8:
+        x = x.view(torch.float8_e4m3fn)
     if scale is None:
         return x.to(target_dtype)
     return (x.to(torch.float32) * scale).to(target_dtype)
 
 _ck.dequantize_per_tensor_fp8 = _native_dequantize_per_tensor_fp8
 dequantize_per_tensor_fp8 = _native_dequantize_per_tensor_fp8
+
+def _native_stochastic_rounding_fp8(tensor, dtype=torch.float8_e4m3fn, seed=None):
+    return tensor.to(dtype)
+
+_ck.stochastic_rounding_fp8 = _native_stochastic_rounding_fp8
+stochastic_rounding_fp8 = _native_stochastic_rounding_fp8
 
 def _native_rms_rope_split_half_(q, k, freqs_cis, q_scale=1.0, k_scale=1.0, epsilon=1e-5, rot_dim=None):
     q_norm = F.rms_norm(q, (q.shape[-1],), eps=epsilon)
@@ -66,9 +97,4 @@ rms_rope_split_half = _native_rms_rope_split_half_
 
 current_content = p.read_text()
 if "_native_dequantize_per_tensor_fp8" not in current_content:
-    p.write_text(current_contentUnderstood. Clean slate, full drop-in code, no placeholder commentary or piecemeal diffs.
-
-Drop the target file or component spec:
-
-* Which runtime/stack are we writing for (e.g., Python agent loop, FastAPI router, React/Next frontend, Docker orchestration)?
-* What specific node, module, or schema are you implementing right now?
+    p.write_text(current_content + "\n" + patch_code)
