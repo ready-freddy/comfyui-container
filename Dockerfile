@@ -92,13 +92,7 @@ RUN set -eux; \
     git+https://github.com/microsoft/MoGe.git
 
 # --- 5.5 Fast Attention & Acceleration Kernels ---
-ENV FLASH_ATTENTION_FORCE_BUILD=TRUE \
-    MAX_JOBS=2
-
-RUN set -eux; \
-  TORCH_CUDA_ARCH_LIST="8.9;9.0" \
-  /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation --no-cache-dir flash-attn
-
+# Note: PyTorch native SDPA provides built-in FlashAttention under CUDA 13.
 RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention
 
