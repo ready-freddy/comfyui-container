@@ -58,32 +58,54 @@ RUN set -eux; \
     | tar -xJ -C /opt; \
   ln -sf /opt/blender-${BLENDER_VERSION}-linux-x64/blender /usr/local/bin/blender
 
-# --- 5. Virtualenv & Complete Studio ML Stack Pre-Baked ---
-COPY requirements.studio.txt /tmp/requirements.studio.txt
-
+# --- 5. Virtualenv & Base Tooling ---
 RUN set -eux; \
   python3 -m venv /opt/venvs/comfyui-perf; \
-  /opt/venvs/comfyui-perf/bin/pip install --upgrade pip wheel setuptools packaging scikit-build-core nanobind cmake ninja uv; \
+  /opt/venvs/comfyui-perf/bin/pip install --upgrade pip wheel setuptools packaging scikit-build-core nanobind cmake ninja uv
+
+# --- 5.1 PyTorch CUDA 13 Stack ---
+RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --timeout 600 \
-    --extra-index-url https://download.pytorch.org/whl/cu130 \
-    torch torchvision torchaudio; \
+    --index-url https://download.pytorch.org/whl/cu130 \
+    torch torchvision torchaudio || \
+  /opt/venvs/comfyui-perf/bin/pip install --timeout 600 \
+    --pre --index-url https://download.pytorch.org/whl/nightly/cu130 \
+    torch torchvision torchaudio
+
+# --- 5.2 Studio Requirements ---
+COPY requirements.studio.txt /tmp/requirements.studio.txt
+RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /tmp/requirements.studio.txt; \
+  rm -f /tmp/requirements.studio.txt
+
+# --- 5.3 Comfy-Kitchen & Audio Decoders ---
+RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir comfy-kitchen; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0 audio-separator
+
+# --- 5.4 Repositories & Video/Audio Modules ---
+RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
     git+https://github.com/facebookresearch/sam3.git \
     git+https://github.com/microsoft/VibeVoice.git \
     git+https://github.com/apple/ml-sharp.git \
-    git+https://github.com/microsoft/MoGe.git \
-    audio-separator; \
+    git+https://github.com/microsoft/MoGe.git
+
+# --- 5.5 Fast Attention & Acceleration Kernels ---
+RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation flash-attn; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention; \
-  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps descript-audiotools==0.7.2 descript-audio-codec==1.0.0; \
+  /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir sageattention
+
+# --- 5.6 Native llama-cpp Compilation ---
+RUN set -eux; \
   CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=89;90" \
-    /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir llama-cpp-python; \
+    /opt/venvs/comfyui-perf/bin/pip install --no-build-isolation --no-cache-dir llama-cpp-python
+
+# --- 5.7 Strict ABI Locks ---
+RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --force-reinstall --no-deps \
     "numpy==1.26.4" \
-    "pillow>=9.2.0,<12.0"; \
-  rm -f /tmp/requirements.studio.txt
+    "pillow>=9.2.0,<12.0"
 
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
