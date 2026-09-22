@@ -45,14 +45,13 @@ if [[ -d "/workspace/bin" ]]; then
     chmod +x /workspace/bin/* 2>/dev/null || true
 fi
 
-
 # 6. Boot Assertion Log & Strict ABI Verification
 /opt/venvs/comfyui-perf/bin/python -c "
-import numpy as np, llama_cpp, cv2, plyfile, sam3
+import numpy as np, llama_cpp, cv2, plyfile, sam3, comfy_kitchen
 assert np.__version__ == '1.26.4', f'CRITICAL: NumPy drifted to {np.__version__}'
 assert llama_cpp.llama_supports_gpu_offload(), 'CRITICAL: llama-cpp-python CUDA offload is inactive'
-print('NumPy 1.26.4, OpenCV, plyfile, and sam3 verified cleanly.')
-" >> /workspace/logs/boot_verification.log 2>&1 && echo "[PROVISION] CUDA Engine & ABI Verified." || {
+print('NumPy 1.26.4, OpenCV, plyfile, sam3, and comfy-kitchen verified cleanly.')
+" >> /workspace/logs/boot_verification.log 2>&1 && echo "[PROVISION] CUDA 13 Engine & ABI Verified." || {
     echo "[CRITICAL WARN] Provisioning check failed! Check /workspace/logs/boot_verification.log"
 }
 
