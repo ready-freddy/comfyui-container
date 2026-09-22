@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Docker tag to push (e.g., v5.8.0)"
+        description: "Docker tag to push (e.g., v6.0.0-cu13)"
         required: true
-        default: "v5.8.0"
+        default: "v6.0.0-cu13"
 
 permissions:
   contents: read
@@ -46,7 +46,7 @@ jobs:
           tags: |
             readyfreddy/ready-freddy-template:${{ inputs.tag }}
             readyfreddy/ready-freddy-template:latest
-            ghcr.io/ready-freddy/comfyui-cu128:${{ inputs.tag }}
-            ghcr.io/ready-freddy/comfyui-cu128:latest
-          cache-from: type=registry,ref=ghcr.io/ready-freddy/comfyui-cu128:buildcache
-          cache-to: type=registry,ref=ghcr.io/ready-freddy/comfyui-cu128:buildcache,mode=min
+            ghcr.io/ready-freddy/comfyui-cu130:${{ inputs.tag }}
+            ghcr.io/ready-freddy/comfyui-cu130:latest
+          cache-from: type=registry,ref=ghcr.io/ready-freddy/comfyui-cu130:buildcache
+          cache-to: type=registry,ref=ghcr.io/ready-freddy/comfyui-cu130:buildcache,mode=min
