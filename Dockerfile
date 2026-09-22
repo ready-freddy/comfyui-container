@@ -19,7 +19,7 @@ ENV TORCH_CUDA_ARCH_LIST="8.9;9.0" \
     PATH="/opt/venvs/comfyui-perf/bin:/usr/local/cuda/bin:${PATH}" \
     LD_LIBRARY_PATH="/workspace/lib:/usr/local/cuda/compat:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
-# --- 1. Base OS + Native Toolchains & JuiceFS ---
+# --- 1. Base OS + Native Dev Toolchain + JuiceFS ---
 RUN set -eux; \
   apt-get update; \
   apt-get install -y --no-install-recommends \
@@ -44,7 +44,7 @@ RUN set -eux; \
   ln -sf /opt/node-v${NODE_VERSION}-linux-x64/bin/npx  /usr/local/bin/npx
 
 # --- 3. Persistent Workspace Skeleton & System Directories ---
-RUN set -eux; mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit} /opt/venvs /scripts
+RUN set -eux; mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit} /opt/venvs /scripts /root/cache
 
 # --- 4. Code-Server ---
 RUN set -eux; \
@@ -60,7 +60,6 @@ RUN set -eux; \
 
 # --- 5. Virtualenv & Complete Studio ML Stack Pre-Baked ---
 COPY requirements.studio.txt /tmp/requirements.studio.txt
-COPY scripts/patch_comfy_kitchen.py /tmp/patch_comfy_kitchen.py
 
 RUN set -eux; \
   python3 -m venv /opt/venvs/comfyui-perf; \
@@ -70,7 +69,6 @@ RUN set -eux; \
     torch torchvision torchaudio; \
   /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /tmp/requirements.studio.txt; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir comfy-kitchen; \
-  /opt/venvs/comfyui-perf/bin/python /tmp/patch_comfy_kitchen.py; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --no-deps \
     git+https://github.com/facebookresearch/sam3.git \
     git+https://github.com/microsoft/VibeVoice.git \
@@ -85,17 +83,16 @@ RUN set -eux; \
   /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --force-reinstall --no-deps \
     "numpy==1.26.4" \
     "pillow>=9.2.0,<12.0"; \
-  rm -f /tmp/requirements.studio.txt /tmp/patch_comfy_kitchen.py
+  rm -f /tmp/requirements.studio.txt
 
 # --- 6. Verified Environment Assertion ---
 RUN set -eux; \
   blender --version; \
   /opt/venvs/comfyui-perf/bin/python -c "\
 import torch, flash_attn, sageattention, comfy_kitchen, comfy_env, audiotools, dac, demucs, numpy as np, PIL, llama_cpp, pathlib, pygltflib, viser, sharp, moge, audio_separator, diffusers, iopath, timm, plyfile, cv2, sam3; \
-assert torch.cuda.is_available() or True, 'PyTorch cu130 layer loaded'; \
 assert np.__version__ == '1.26.4', f'NumPy mismatch: {np.__version__}'; \
 assert int(PIL.__version__.split('.')[0]) < 12, f'Pillow mismatch: {PIL.__version__}'; \
-print(f'=== ALL NATIVE CUDA 13 ACCELERATION, BLENDER & STUDIO STACK VERIFIED ===')"
+print(f'=== NATIVE CUDA 13 ACCELERATION, COMFY-KITCHEN, SAM3 & BLENDER VERIFIED ===')"
 
 # --- 7. Runtime Toggles ---
 ENV COMFY_PORT=3000 \
