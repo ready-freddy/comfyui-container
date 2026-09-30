@@ -3,19 +3,33 @@ import torch
 import torch.nn.functional as F
 import comfy_kitchen
 
-# --- 1. Patch torch._scaled_mm to accept uint8 Byte storage ---
+# --- 1. Global scaled_mm monkey-patch with memory contiguous enforcement ---
 _orig_scaled_mm = torch._scaled_mm
 
 def _safe_scaled_mm(mat1, mat2, *args, **kwargs):
-    if isinstance(mat2, torch.Tensor) and mat2.dtype == torch.uint8:
-        mat2 = mat2.view(torch.float8_e4m3fn)
+    # Ensure tensors are contiguous and cast uint8 storage to float8_e4m3fn
     if isinstance(mat1, torch.Tensor) and mat1.dtype == torch.uint8:
-        mat1 = mat1.view(torch.float8_e4m3fn)
-    return _orig_scaled_mm(mat1, mat2, *args, **kwargs)
+        mat1 = mat1.contiguous().view(torch.float8_e4m3fn)
+    if isinstance(mat2, torch.Tensor) and mat2.dtype == torch.uint8:
+        mat2 = mat2.contiguous().view(torch.float8_e4m3fn)
+    
+    try:
+        return _orig_scaled_mm(mat1, mat2, *args, **kwargs)
+    except Exception:
+        # Fallback to high-precision dequantized matmul if CUDA 12.8 driver lacks hardware kernel
+        scale_a = kwargs.get("scale_a", None)
+        scale_b = kwargs.get("scale_b", None)
+        m1 = mat1.to(torch.bfloat16)
+        m2 = mat2.to(torch.bfloat16)
+        if scale_a is not None:
+            m1 = m1 * scale_a
+        if scale_b is not None:
+            m2 = m2 * scale_b
+        return torch.matmul(m1, m2), None
 
 torch._scaled_mm = _safe_scaled_mm
 
-# --- 2. Patch comfy_kitchen native math shims ---
+# --- 2. Patch comfy_kitchen internals directly ---
 p = pathlib.Path(comfy_kitchen.__file__)
 
 patch_code = """
@@ -25,20 +39,30 @@ import comfy_kitchen as _ck
 
 DTYPE_CODE_TO_TORCH = {0: torch.float32, 1: torch.float16, 2: torch.bfloat16}
 
-# Fix Byte inputs to hardware GEMM
 _orig_torch_scaled_mm = torch._scaled_mm
 def _safe_torch_scaled_mm(mat1, mat2, *args, **kwargs):
-    if isinstance(mat2, torch.Tensor) and mat2.dtype == torch.uint8:
-        mat2 = mat2.view(torch.float8_e4m3fn)
     if isinstance(mat1, torch.Tensor) and mat1.dtype == torch.uint8:
-        mat1 = mat1.view(torch.float8_e4m3fn)
-    return _orig_torch_scaled_mm(mat1, mat2, *args, **kwargs)
+        mat1 = mat1.contiguous().view(torch.float8_e4m3fn)
+    if isinstance(mat2, torch.Tensor) and mat2.dtype == torch.uint8:
+        mat2 = mat2.contiguous().view(torch.float8_e4m3fn)
+    try:
+        return _orig_torch_scaled_mm(mat1, mat2, *args, **kwargs)
+    except Exception:
+        scale_a = kwargs.get("scale_a", None)
+        scale_b = kwargs.get("scale_b", None)
+        m1 = mat1.to(torch.bfloat16)
+        m2 = mat2.to(torch.bfloat16)
+        if scale_a is not None:
+            m1 = m1 * scale_a
+        if scale_b is not None:
+            m2 = m2 * scale_b
+        return torch.matmul(m1, m2), None
 torch._scaled_mm = _safe_torch_scaled_mm
 
 def _native_dequantize_per_tensor_fp8(x, scale, dtype):
     target_dtype = DTYPE_CODE_TO_TORCH.get(dtype, dtype) if isinstance(dtype, int) else dtype
     if x.dtype == torch.uint8:
-        x = x.view(torch.float8_e4m3fn)
+        x = x.contiguous().view(torch.float8_e4m3fn)
     if scale is None:
         return x.to(target_dtype)
     return (x.to(torch.float32) * scale).to(target_dtype)
