@@ -3,8 +3,23 @@ set -euo pipefail
 
 echo "=== [BOOT] INITIALIZING CONTAINER ENVIRONMENT ==="
 
+# --- 0. Global Volume Mount Guard ---
+echo "[BOOT] Awaiting network volume mount at /workspace..."
+TIMEOUT=30
+ELAPSED=0
+# Wait until /workspace is mounted and accessible
+while [ ! -d "/workspace" ] || [ ! -w "/workspace" ]; do
+    sleep 1
+    ELAPSED=$((ELAPSED + 1))
+    if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+        echo "[WARN] Volume mount wait timed out after ${TIMEOUT}s. Proceeding with caution..."
+        break
+    fi
+done
+echo "[BOOT] Volume mount verified at /workspace."
+
 # 1. Ensure directory skeleton
-mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit} /workspace/.venvs /workspace/.locks /root/cache
+mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit} /workspace/.venvs /workspace/.locks /root/cache 2>/dev/null || true
 
 # 2. Mount JuiceFS/R2 Storage if REDIS_URL is passed
 if [[ -n "${REDIS_URL:-}" ]]; then
@@ -17,8 +32,8 @@ if [[ -n "${REDIS_URL:-}" ]]; then
       /workspace/ComfyUI/models || echo "[WARN] JuiceFS mount encountered an issue."
 fi
 
-# 3. Redirect legacy network venv paths cleanly to /opt NVMe
-ln -sfn /opt/venvs/comfyui-perf /workspace/.venvs/comfyui-perf
+# 3. Redirect legacy network venv paths cleanly to /opt NVMe (guarded for object-storage volumes)
+ln -sfn /opt/venvs/comfyui-perf /workspace/.venvs/comfyui-perf 2>/dev/null || true
 
 # 4. Clear stale lock/PID files from previous boots
 rm -f /workspace/.locks/.*.pid /workspace/comfy_env.sh 2>/dev/null || true
