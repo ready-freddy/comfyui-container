@@ -13,7 +13,7 @@ case "$CMD" in
     nohup "${VENV}/bin/python" -u "$APP" \
       --listen 0.0.0.0 \
       --port "$PORT" \
-      --use-flash-attention \
+      --use-split-cross-attention \
       >>"$LOG" 2>&1 &
     echo "started :$PORT (log $LOG)"
     ;;
