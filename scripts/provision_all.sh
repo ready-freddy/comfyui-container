@@ -3,39 +3,46 @@ set -euo pipefail
 
 echo "[PROVISION] Checking workspace integrity..."
 
-# 1. Ensure ComfyUI core exists on the network volume
+# 1. Ensure ComfyUI core exists on the network volume (clone to /tmp first to bypass object-storage Git lock limitations)
 if [[ ! -f "/workspace/ComfyUI/main.py" ]]; then
-    echo "[PROVISION] Cloning ComfyUI repository..."
-    git clone https://github.com/comfyanonymous/ComfyUI.git /workspace/ComfyUI
+    echo "[PROVISION] Cloning ComfyUI repository via local buffer..."
+    rm -rf /tmp/ComfyUI
+    git clone https://github.com/comfyanonymous/ComfyUI.git /tmp/ComfyUI
+    cp -r /tmp/ComfyUI /workspace/ComfyUI 2>/dev/null || cp -R /tmp/ComfyUI /workspace/
+    rm -rf /tmp/ComfyUI
 fi
 
 # 2. Ensure model directories exist
-mkdir -p /workspace/ComfyUI/models/{checkpoints,clip,clip_vision,configs,controlnet,diffusers,embeddings,gligen,hypernetworks,loras,style_models,unet,upscale_models,vae,vae_approx,LLM}
+mkdir -p /workspace/ComfyUI/models/{checkpoints,clip,clip_vision,configs,controlnet,diffusers,embeddings,gligen,hypernetworks,loras,style_models,unet,upscale_models,vae,vae_approx,LLM} 2>/dev/null || true
 
 # 3. Synchronize custom repositories essential to H3, IAMCCS, and SAM3
 if [[ -d "/workspace/ComfyUI/custom_nodes" ]]; then
-    # Ensure IAMCCS Face Detailer dependency is present
     if [[ ! -d "/workspace/ComfyUI/custom_nodes/ComfyUI-H3-FaceRefine" ]]; then
-        echo "[PROVISION] Cloning ComfyUI-H3-FaceRefine for IAMCCS..."
-        git clone https://github.com/Carasibana/ComfyUI-H3-FaceRefine.git /workspace/ComfyUI/custom_nodes/ComfyUI-H3-FaceRefine || true
+        echo "[PROVISION] Fetching ComfyUI-H3-FaceRefine for IAMCCS..."
+        rm -rf /tmp/ComfyUI-H3-FaceRefine
+        git clone https://github.com/Carasibana/ComfyUI-H3-FaceRefine.git /tmp/ComfyUI-H3-FaceRefine || true
+        if [[ -d "/tmp/ComfyUI-H3-FaceRefine" ]]; then
+            cp -r /tmp/ComfyUI-H3-FaceRefine /workspace/ComfyUI/custom_nodes/ 2>/dev/null || true
+            rm -rf /tmp/ComfyUI-H3-FaceRefine
+        fi
     fi
 
-    # Disable conflicting comfyui_colmap to avoid polluting python sys.path / lib namespace
+    # Disable conflicting comfyui_colmap
     if [[ -d "/workspace/ComfyUI/custom_nodes/comfyui_colmap" ]]; then
-        echo "[PROVISION] Disabling comfyui_colmap namespace conflict..."
-        mv /workspace/ComfyUI/custom_nodes/comfyui_colmap /workspace/ComfyUI/custom_nodes/.comfyui_colmap.disabled 2>/dev/null || true
+        echo "[PROVISION] Disabling comfyui_colmap..."
+        cp -r /workspace/ComfyUI/custom_nodes/comfyui_colmap /workspace/ComfyUI/custom_nodes/.comfyui_colmap.disabled 2>/dev/null || true
+        rm -rf /workspace/ComfyUI/custom_nodes/comfyui_colmap 2>/dev/null || true
     fi
 
-    # Strip malformed comfy-env-root.toml from ComfyUI-SAM3 to allow clean standard load
+    # Strip malformed comfy-env-root.toml
     if [[ -f "/workspace/ComfyUI/custom_nodes/ComfyUI-SAM3/comfy-env-root.toml" ]]; then
-        echo "[PROVISION] Removing deprecated comfy-env-root.toml from ComfyUI-SAM3..."
         rm -f "/workspace/ComfyUI/custom_nodes/ComfyUI-SAM3/comfy-env-root.toml" 2>/dev/null || true
     fi
 fi
 
-# 4. Synchronize experimental dependencies with strict ABI guardrail
+# 4. Synchronize experimental dependencies
 if [[ -s "/workspace/requirements.custom.txt" ]]; then
-    echo "[PROVISION] Syncing custom requirements from /workspace/requirements.custom.txt..."
+    echo "[PROVISION] Syncing custom requirements..."
     /opt/venvs/comfyui-perf/bin/uv pip install --no-cache -r /workspace/requirements.custom.txt "numpy==1.26.4" >> /workspace/logs/dependency_sync.log 2>&1 || true
     /opt/venvs/comfyui-perf/bin/pip install --no-cache-dir --force-reinstall --no-deps "numpy==1.26.4" >> /workspace/logs/dependency_sync.log 2>&1 || true
 fi
@@ -45,8 +52,7 @@ if [[ -d "/workspace/bin" ]]; then
     chmod +x /workspace/bin/* 2>/dev/null || true
 fi
 
-
-# 6. Boot Assertion Log & Strict ABI Verification
+# 6. Verification Assertion
 /opt/venvs/comfyui-perf/bin/python -c "
 import numpy as np, llama_cpp, cv2, plyfile, sam3
 assert np.__version__ == '1.26.4', f'CRITICAL: NumPy drifted to {np.__version__}'
