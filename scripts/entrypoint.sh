@@ -3,13 +3,26 @@ set -euo pipefail
 
 echo "=== [BOOT] INITIALIZING CONTAINER ENVIRONMENT ==="
 
-# 1. Ensure directory skeleton on network mount
-mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit} /workspace/.venvs /workspace/.locks
+# --- 0. Global Volume Mount Guard ---
+echo "[BOOT] Waiting for volume mount at /workspace..."
+TIMEOUT=30
+ELAPSED=0
+while [ ! -d "/workspace" ] || [ ! -w "/workspace" ]; do
+    sleep 1
+    ELAPSED=$((ELAPSED + 1))
+    if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+        echo "[WARN] Volume wait timed out after ${TIMEOUT}s. Proceeding..."
+        break
+    fi
+done
 
-# 2. Redirect legacy network venv paths cleanly to /opt NVMe
-ln -sfn /opt/venvs/comfyui-perf /workspace/.venvs/comfyui-perf
+# 1. Ensure directory skeleton (safely catch object-storage permission warnings)
+mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit} /workspace/.venvs /workspace/.locks 2>/dev/null || true
 
-# 3. Clear stale lock/PID files from previous boots
+# 2. Redirect legacy network venv paths (fail-safe)
+ln -sfn /opt/venvs/comfyui-perf /workspace/.venvs/comfyui-perf 2>/dev/null || true
+
+# 3. Clear stale lock/PID files
 rm -f /workspace/.locks/.*.pid /workspace/comfy_env.sh 2>/dev/null || true
 
 # 4. Run workspace provisioning if enabled
