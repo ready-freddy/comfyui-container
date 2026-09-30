@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Docker tag to push (e.g., v6.1.1)"
+        description: "Docker tag to push (e.g., v6.1.2)"
         required: true
-        default: "v6.1.1"
+        default: "v6.1.2"
 
 permissions:
   contents: read
