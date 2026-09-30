@@ -4,22 +4,19 @@ set -euo pipefail
 echo "=== [BOOT] INITIALIZING CONTAINER ENVIRONMENT ==="
 
 # --- 0. Global Volume Mount Guard ---
-echo "[BOOT] Waiting for volume mount at /workspace..."
-TIMEOUT=30
-ELAPSED=0
-while [ ! -d "/workspace" ] || [ ! -w "/workspace" ]; do
-    sleep 1
-    ELAPSED=$((ELAPSED + 1))
-    if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
-        echo "[WARN] Volume wait timed out after ${TIMEOUT}s. Proceeding..."
+echo "[BOOT] Checking volume mount at /workspace..."
+for i in {1..30}; do
+    if [ -d "/workspace/models" ] || [ -d "/workspace/ComfyUI" ]; then
+        echo "[BOOT] Global storage detected after ${i}s."
         break
     fi
+    sleep 1
 done
 
-# 1. Ensure directory skeleton (safely catch object-storage permission warnings)
-mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI,ai-toolkit} /workspace/.venvs /workspace/.locks 2>/dev/null || true
+# 1. Ensure directory skeleton
+mkdir -p /workspace/{bin,models,logs,notebooks,ComfyUI} /workspace/.venvs /workspace/.locks 2>/dev/null || true
 
-# 2. Redirect legacy network venv paths (fail-safe)
+# 2. Redirect legacy network venv paths
 ln -sfn /opt/venvs/comfyui-perf /workspace/.venvs/comfyui-perf 2>/dev/null || true
 
 # 3. Clear stale lock/PID files
